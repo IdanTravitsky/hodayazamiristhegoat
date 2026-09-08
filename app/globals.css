@@ -119,4 +119,14 @@ body:has(.blood-moon){background:#2b2830;transition:background-color 1s}
 .photo-note,.hero-footnote,.hand-note,.handwritten{color:#8a6b60}
 .domain-footer,.league-tag a>span,.soundtrack-caption p{color:#637461}
 @media(max-width:760px){.site-header{gap:12px}.site-header nav{gap:12px}.wordmark{font-size:20px}}
-@media(max-width:540px){.site-header{height:auto;min-height:96px;padding:17px 0 9px;flex-wrap:wrap;gap:5px 12px}.wordmark{font-size:clamp(19px,5.5vw,24px);letter-spacing:-.65px}.site-header nav{width:100%;justify-content:flex-end;gap:15px}.sound-button span{display:inline}.hero{padding-top:28px}}
+@media(max-width:540px){.site-header{height:auto;min-height:96px;padding:17px 0 9px;flex-wrap:wrap;gap:5px 12px}.wordmark{font-size:clamp(19px,5.5vw,24px);letter-spacing:-.65px}.site-header nav{width:100%;justify-content:flex-end;gap:15px}.sound-button span{display:inline}.hero{padding-top:28px}}/* Pointer dragging works equally with a finger, pen, or mouse. */
+.desktop-file{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.desktop-file .pixel-icon{pointer-events:none}
+.is-dragging .desktop-file{opacity:.3;cursor:grabbing}
+.recycle-bin{min-width:88px;min-height:90px;justify-content:center}
+.recycle-bin.drop-ready{background:#cad9bc;outline:2px dashed #718666;outline-offset:3px}
+.recycle-bin.drop-ready>.pixel-icon{transform:translateY(-4px) rotate(-7deg);color:#41633f}
+.recycle-bin.drop-ready>span{max-width:105px;font-size:11px;line-height:1.4}
+.java-drag-ghost{position:fixed;z-index:100;pointer-events:none;transform:translate(-50%,calc(-100% - 14px)) rotate(-8deg);display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 10px;background:#f5f0e3;color:#805f50;box-shadow:3px 3px 0 #304b4333;font:12px 'Courier New',monospace;border:1px solid #bba68e}
+.java-drag-ghost>.pixel-icon{width:35px;height:35px}.night-ghost{background:#493a43;color:#e2b89e;border-color:#a87f69}
+.blood-moon .recycle-bin.drop-ready{background:#5b4548;outline-color:#c39b7e}.blood-moon .recycle-bin.drop-ready>.pixel-icon{color:#dbb48e}
