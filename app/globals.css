@@ -130,3 +130,35 @@ body:has(.blood-moon){background:#2b2830;transition:background-color 1s}
 .java-drag-ghost{position:fixed;z-index:100;pointer-events:none;transform:translate(-50%,calc(-100% - 14px)) rotate(-8deg);display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 10px;background:#f5f0e3;color:#805f50;box-shadow:3px 3px 0 #304b4333;font:12px 'Courier New',monospace;border:1px solid #bba68e}
 .java-drag-ghost>.pixel-icon{width:35px;height:35px}.night-ghost{background:#493a43;color:#e2b89e;border-color:#a87f69}
 .blood-moon .recycle-bin.drop-ready{background:#5b4548;outline-color:#c39b7e}.blood-moon .recycle-bin.drop-ready>.pixel-icon{color:#dbb48e}
+
+/* Keep outfit comparisons in place on phones. */
+.wardrobe-preview{display:none}
+.tribute{overflow:clip}
+.music-retry{border:1px solid var(--line);padding:10px 16px;min-height:44px;margin:0 0 18px}
+.catchable-star{width:44px;height:44px;margin:-7px 0 0 -7px;padding:14px}
+.footer-goat{position:relative;min-width:72px;min-height:60px}
+.goat-hearts{position:absolute;inset:0;pointer-events:none}
+.goat-hearts .pixel-icon{position:absolute;width:14px;height:14px;color:#a96479;animation:goat-love 1.3s ease-out infinite}
+.goat-hearts .pixel-icon:nth-child(1){left:2px;top:4px}.goat-hearts .pixel-icon:nth-child(2){left:30px;top:-5px;animation-delay:.2s}.goat-hearts .pixel-icon:nth-child(3){right:1px;top:8px;animation-delay:.4s}
+.footer-doodle .idan-signature span[lang=he]{font:30px Levin,Arial,sans-serif;display:inline}
+@keyframes goat-love{from{transform:translateY(4px);opacity:.4}50%{opacity:1}to{transform:translateY(-12px);opacity:.2}}
+@media(max-width:760px){
+ .wardrobe-preview{position:sticky;top:0;z-index:8;display:flex;align-items:center;gap:16px;background:var(--paper);padding:8px 4px;border-bottom:1px solid var(--line);margin-bottom:20px;min-height:108px}
+ .wardrobe-preview>.sprite{width:64px;height:96px;flex-shrink:0}
+ .wardrobe-preview>div{min-width:0}.wardrobe-preview p{font:19px/1.25 Fraunces,serif;margin:0;text-wrap:balance}
+ .wardrobe-preview a{font:12px DM,sans-serif;display:inline-flex;align-items:center;min-height:44px;text-decoration:underline;text-underline-offset:4px;color:var(--soft)}
+ .outfit-choice{scroll-margin-top:125px}
+ .blood-moon .wardrobe-preview a{color:#c1a899}
+}
+@media(max-width:540px){
+ .achievement-toast{bottom:max(12px,env(safe-area-inset-bottom));padding:10px 6px 10px 12px;gap:10px}
+ .achievement-toast.earned p{display:none}.achievement-toast strong{font-size:17px;line-height:1.35}
+ .achievement-toast small{font-size:9px;letter-spacing:0;margin-bottom:3px}
+ .achievement-toast .toast-icon{width:30px;height:36px}.achievement-toast .toast-icon>.pixel-icon{width:20px;height:20px}
+}
+
+.keepsake-dialog{max-width:min(410px,calc(100vw - 36px))!important;text-align:center}
+.keepsake-image{display:block;width:160px;height:220px;max-width:100%;object-fit:contain;image-rendering:pixelated;margin:18px auto;background:#e7e7d8}
+.keepsake-export-actions{display:flex;justify-content:center;gap:18px;flex-wrap:wrap}
+.keepsake-export-actions>a,.keepsake-export-actions>button{display:inline-flex;align-items:center;min-height:44px;font-size:13px;text-decoration:underline;text-underline-offset:5px}
+@media(max-height:580px){.keepsake-image{width:96px;height:132px;margin:10px auto}}

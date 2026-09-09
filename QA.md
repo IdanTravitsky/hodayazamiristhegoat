@@ -14,3 +14,13 @@ Custom-domain DNS should be changed only after the GitHub Pages custom domain ha
 - Added an adaptive paper outline to the handwritten hero caption and softened the day/Blood Moon palette; the full domain header fits at 320px, 390px, tablet, and desktop sizes.
 - Replaced native HTML drag initiation with pointer capture for mouse, touch, and pen. Only the file disables touch scrolling; the rest of the page still scrolls normally.
 - Browser-tested successful and missed pointer drops at desktop and 390px widths, ghost cleanup, undo, the tap-to-bin fallback, and persistence after reload. No browser errors. The browser automation sends mouse pointer events; a physical touchscreen was not available for testing.
+
+## Discovery and music fixes (2026-09-09)
+- 11 regression tests cover repeat-tap expiry/cancellation, iframe playback synchronization, blocked autoplay, failed-player retry and stale callbacks, player readiness timeout, phase/firefly restoration, legacy saves, local goat feedback, modal notification suppression, and simulated touch drops/cancellation.
+- The tests run before every Pages deployment.
+- Browser-tested the real YouTube player: playing and pausing inside the embed update the site controls; stopping removes the player.
+- Reviewed the sticky mobile outfit preview, 44px firefly targets, local goat hearts, Hebrew note, and sprite export preview at narrow phone widths. Blood Moon and the equipped outfit survive reload.
+- Sprite export now opens a visible 384x528 PNG with a direct download link, touch-and-hold fallback, and a native share option when the browser reports support. Verified the generated image dimensions and 320px dialog margins.
+- Revised the requested captions and envelope label. The roof-budget caption now refers directly to the frame.
+- Updated Vite to 8.2.2; npm audit reported zero vulnerabilities.
+- No physical iPhone or Android was connected. Native Photos/share-sheet behavior and real-finger input remain unverified on physical hardware.
