@@ -1,17 +1,22 @@
 // Compares her result set with the expected one, and explains the difference kindly.
-// Lenient where MySQL graders usually are: column order, column names, 4.5 vs 4.50,
-// '2021' vs 2021, text case and outer spaces, '2021-01-01' vs '2021-01-01 00:00:00'.
+// Lenient only where it doesn't matter: column order, column names, '2021' vs 2021, outer spaces,
+// '2021-01-01' vs '2021-01-01 00:00:00', and float noise below 6 decimals.
+// Strict where an exam would be: rounding, letter case (reported as its own hint), and row order
+// (when the question asks for one, an ORDER BY must actually be there).
 
-const r2 = x => { const r = Math.round(x * 100) / 100; return (Object.is(r, -0) ? 0 : r).toFixed(2); };
+const fixed = (x, d) => { const f = 10 ** d; const r = Math.round(x * f) / f; return (Object.is(r, -0) ? 0 : r).toFixed(d); };
 
-export function canon(v) {
-  if (v === null || v === undefined) return '∅';
-  if (typeof v === 'number') return 'n' + r2(v);
-  let s = String(v).trim();
-  if (/^-?\d+(\.\d+)?$/.test(s)) return 'n' + r2(parseFloat(s));
-  s = s.replace(/^(\d{4}-\d{2}-\d{2}) 00:00:00$/, '$1');
-  return 's' + s.toLowerCase();
+function canonWith(precision, foldCase) {
+  return v => {
+    if (v === null || v === undefined) return '∅';
+    if (typeof v === 'number') return 'n' + fixed(v, precision);
+    let s = String(v).trim();
+    if (/^-?\d+(\.\d+)?$/.test(s)) return 'n' + fixed(parseFloat(s), precision);
+    s = s.replace(/^(\d{4}-\d{2}-\d{2}) 00:00:00$/, '$1');
+    return 's' + (foldCase ? s.toLowerCase() : s);
+  };
 }
+export const canon = canonWith(6, false);
 
 const show = v => (v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(+v.toFixed(4)) : `'${v}'`);
 
@@ -51,21 +56,24 @@ function mapColumns(E, A, ec, ac) {
     return false;
   };
   if (!cand.every(c => c.length)) return null;
-  // row-level check: try mappings until one also matches whole rows (bounded search)
   return go(0) ? map : null;
 }
 
 const project = (rows, map) => rows.map(r => map.map(j => r[j]));
 
-/**
- * @param exp {columns, values}  expected (from the model solution)
- * @param act {columns, values}  hers
- * @param opts {ordered}
- * @returns {ok, title, message, kind}  kind: 'ok' | 'close' | 'wrong'
- */
-export function compare(exp, act, opts = {}) {
-  const E = exp.values.map(r => r.map(canon));
-  const A = act.values.map(r => r.map(canon));
+/** Does the (last) statement have an ORDER BY of its own (not one inside parentheses / OVER)? */
+export function hasTopOrderBy(sql) {
+  let s = String(sql || '')
+    .replace(/'(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.)*"|`[^`]*`/g, "''")
+    .replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, ' ');
+  for (let prev = ''; prev !== s;) { prev = s; s = s.replace(/\([^()]*\)/g, ' '); }
+  const stmts = s.split(';').filter(x => x.trim());
+  return /\bORDER\s+BY\b/i.test(stmts[stmts.length - 1] || '');
+}
+
+function compareCore(exp, act, opts, canonFn) {
+  const E = exp.values.map(r => r.map(canonFn));
+  const A = act.values.map(r => r.map(canonFn));
   const ec = exp.columns.length, ac = act.columns.length;
   const ne = E.length, na = A.length;
   const expCols = exp.columns.join(', ');
@@ -101,18 +109,13 @@ export function compare(exp, act, opts = {}) {
     const P = project(A, map);
     if (opts.ordered) {
       if (P.every((r, i) => r.join('\u0001') === E[i].join('\u0001'))) return { ok: true, kind: 'ok' };
-      if (sameMultiset(E, P)) return { ok: false, kind: 'close', title: 'Right rows, wrong order', message: 'All the right rows, in a different order. Check your **ORDER BY** (which column, and ASC vs DESC).' };
+      if (sameMultiset(E, P)) return { ok: false, kind: 'close', title: 'Right rows, wrong order', message: 'All the right rows, in a different order. Check your **ORDER BY**: which columns, ASC vs DESC, and the tie-breaker the question mentions.' };
     } else if (sameMultiset(E, P)) {
       return { ok: true, kind: 'ok' };
     }
   }
 
   // Same shape, different values: find the first differing cell (positional) to point at.
-  const ms = multiset(A);
-  for (const r of E) {
-    const k = r.join('\u0001');
-    if (ms.get(k)) ms.set(k, ms.get(k) - 1);
-  }
   let near = false;
   for (let i = 0; i < Math.min(ne, 200); i++) {
     for (let j = 0; j < ec; j++) {
@@ -121,7 +124,7 @@ export function compare(exp, act, opts = {}) {
       if (!isNaN(nx) && !isNaN(ny) && nx !== ny && Math.abs(nx - ny) <= Math.max(0.1, Math.abs(nx) * 0.01)) near = true;
     }
   }
-  if (near) return { ok: false, kind: 'close', title: 'Very close', message: 'Same shape and nearly the same numbers. Probably rounding: check **ROUND(x, 2)** or which column you add up.' };
+  if (near) return { ok: false, kind: 'close', title: 'Very close', message: 'Same shape and nearly the same numbers. Probably rounding: use **ROUND(x, n)** with exactly the number of decimals the question asks for (or none, if it asks for none). Or check which column you add up.' };
 
   for (let i = 0; i < ne; i++) {
     for (let j = 0; j < ec; j++) {
@@ -134,6 +137,27 @@ export function compare(exp, act, opts = {}) {
     }
   }
   return { ok: false, kind: 'wrong', title: 'Not quite', message: 'Same shape, different values.' };
+}
+
+/**
+ * @param exp {columns, values}  expected (from the model solution)
+ * @param act {columns, values}  hers
+ * @param opts {ordered, sql, loose}  sql: her query (to require ORDER BY when ordered);
+ *             loose: 2-decimal, case-blind comparison (for comparing two engines, not for grading)
+ * @returns {ok, title, message, kind}  kind: 'ok' | 'close' | 'wrong'
+ */
+export function compare(exp, act, opts = {}) {
+  if (opts.loose) return compareCore(exp, act, opts, canonWith(2, true));
+  let v = compareCore(exp, act, opts, canonWith(6, false));
+  if (!v.ok) {
+    const folded = compareCore(exp, act, opts, canonWith(6, true));
+    if (folded.ok) return { ok: false, kind: 'close', title: 'Only the letter case differs', message: "The values are right, but some text has different capitals than the answer (like 'Short' vs 'short', or UPPER where it wasn't asked for). Match the case the question shows." };
+    return v;
+  }
+  if (opts.ordered && opts.sql != null && !hasTopOrderBy(opts.sql)) {
+    v = { ok: false, kind: 'close', title: 'Needs an ORDER BY', message: 'The rows happen to come out in the right order here, but the question asks for an order and your query has no **ORDER BY**. Without it, MySQL promises no order at all, so on an exam this counts as wrong.' };
+  }
+  return v;
 }
 
 /** Last result set that is a table, or null */

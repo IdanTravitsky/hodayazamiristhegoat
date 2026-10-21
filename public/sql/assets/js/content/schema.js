@@ -28,7 +28,7 @@ export const TABLES = {
       Composer: 'Who wrote it. NULL for 977 tracks, so COUNT(Composer) is less than COUNT(*).',
       Milliseconds: 'Length. Divide by 60000 for minutes, by 1000 for seconds.',
       Bytes: 'File size in bytes. Divide by 1048576 for MB.',
-      UnitPrice: 'List price: 0.99 for songs, 1.99 for videos.',
+      UnitPrice: 'List price: 0.99 for audio, 1.99 for videos (one video is 0.99).',
     },
     facts: ['3,503 tracks. 1,519 of them were never bought (no InvoiceLine points at them).', 'Like Sakila\'s film: the thing everything else revolves around.'],
   },
@@ -125,6 +125,7 @@ export const GOTCHAS = [
   { t: 'NULLs that matter', d: 'Composer (977 NULL), Customer.Company (49 NULL), State (29 NULL), Fax, ReportsTo (1 NULL). `= NULL` never matches; use `IS NULL`.' },
   { t: 'Dates are DATETIME', d: "In MySQL, InvoiceDate looks like `2023-04-05 00:00:00` (every time is midnight, so this site just shows `2023-04-05`). Use `YEAR(InvoiceDate) = 2023`, or `InvoiceDate >= '2023-01-01' AND InvoiceDate < '2024-01-01'`." },
   { t: 'Milliseconds', d: 'Track length is in milliseconds. Minutes = `Milliseconds / 60000`. "Longer than 5 minutes" = `Milliseconds > 300000`.' },
+  { t: 'Text compares loosely', d: "MySQL's default collation ignores case **and accents**: `'usa' = 'USA'` and `'Luis' = 'Luís'` are both true (so `WHERE FirstName = 'Luis'` finds two customers). This site ignores case too, but not accents, so a rare query that depends on accented names (Luís, François...) can give MySQL one row fewer or more." },
   { t: 'Things that never happened', d: '71 artists have no album, 1,519 tracks were never sold, 4 playlists are empty. "Never" questions want `LEFT JOIN ... WHERE x IS NULL` or `NOT EXISTS`.' },
 ];
 
@@ -134,16 +135,19 @@ FROM Track t
 JOIN Album al ON al.AlbumId = t.AlbumId
 JOIN Artist ar ON ar.ArtistId = al.ArtistId
 JOIN Genre g ON g.GenreId = t.GenreId
+ORDER BY t.TrackId
 LIMIT 10;` },
   { q: 'What did each customer buy', sql: `SELECT c.FirstName, c.LastName, i.InvoiceDate, t.Name AS Track
 FROM Customer c
 JOIN Invoice i ON i.CustomerId = c.CustomerId
 JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
 JOIN Track t ON t.TrackId = il.TrackId
+ORDER BY i.InvoiceDate, il.InvoiceLineId
 LIMIT 10;` },
   { q: 'Customer with their support rep', sql: `SELECT c.FirstName, c.LastName, e.FirstName AS RepFirst, e.LastName AS RepLast
 FROM Customer c
 JOIN Employee e ON e.EmployeeId = c.SupportRepId
+ORDER BY c.LastName, c.FirstName
 LIMIT 10;` },
   { q: 'Employee with their manager', sql: `SELECT e.FirstName, e.LastName, m.FirstName AS ManagerFirst, m.LastName AS ManagerLast
 FROM Employee e

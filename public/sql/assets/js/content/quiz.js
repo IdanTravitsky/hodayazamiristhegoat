@@ -1,5 +1,7 @@
 // "Understand" section: reading and reasoning about SQL on Chinook (MySQL 8).
-// Every number and row count below was checked against the real data with tools/sql.cjs.
+// Every number and row count below was checked against the real data with tools/sql.cjs
+// and in a real MySQL 8 server (tools/mysql-diff.mjs). Avoid queries whose result depends on
+// accents (MySQL's collation ignores them, the practice engine does not) or on tie order.
 // The practice engine reproduces MySQL's errors for the classic traps (alias in WHERE,
 // ONLY_FULL_GROUP_BY, = with several rows, derived table alias, foreign keys), so Run shows them.
 
@@ -35,7 +37,7 @@ Some customers share a city (two live in São Paulo, for example), so 59 rows sh
     answer: 3,
     explain: `First MySQL needs rows to work with (**FROM**, joins included). **WHERE** throws away single rows, **GROUP BY** squashes what's left into groups, **HAVING** throws away whole groups, and only then does **SELECT** compute the output columns. **ORDER BY** sorts the finished result and **LIMIT** cuts it.
 
-This one order explains three classic errors:
+This one order explains three classic rules:
 - WHERE can't use an aggregate like \`COUNT(*)\`: the groups don't exist yet.
 - WHERE can't use a SELECT alias: SELECT hasn't run yet.
 - ORDER BY *can* use a SELECT alias: it runs after SELECT.
@@ -88,7 +90,7 @@ ORDER BY Country, City DESC;`,
 
 So Argentina comes first, and inside Brazil the cities run São Paulo, São José dos Campos, Rio de Janeiro, Brasília. For both descending, write \`ORDER BY Country DESC, City DESC\`.
 
-The second column is only a tie-breaker: it never reorders the countries, it only sorts rows *within* the same country.`,
+The second column is only a tie-breaker: it never reorders the countries, it only sorts rows *within* the same country. Rows that tie on both (the two customers in Paris, say) come out in no guaranteed order; add a third column if you need one.`,
   },
   {
     id: 'q-basics-5',
@@ -160,21 +162,21 @@ WHERE Composer IS NULL;`,
     prompt: `Which artists does this return?`,
     sql: `SELECT Name
 FROM Artist
-WHERE Name LIKE '_a%';`,
+WHERE Name LIKE '_e%';`,
     options: [
-      'Artists whose name starts with "a"',
-      'Artists whose name contains an "a" anywhere',
-      'Artists whose second character is "a", like Santana and Van Halen',
-      'Artists whose name is exactly two characters long and ends in "a"',
+      'Artists whose name starts with "e"',
+      'Artists whose name contains an "e" anywhere',
+      'Artists whose second character is "e", like Metallica and Led Zeppelin',
+      'Artists whose name is exactly two characters long and ends in "e"',
     ],
     answer: 2,
-    explain: `In LIKE, \`_\` means **exactly one** character and \`%\` means **any number** of characters (zero included). So \`'_a%'\` reads: one character, then "a", then anything. That's 52 artists, from Santana and Van Halen to Aaron Goldberg ("A", then "a").
+    explain: `In LIKE, \`_\` means **exactly one** character and \`%\` means **any number** of characters (zero included). So \`'_e%'\` reads: one character, then "e", then anything. That's 42 artists, from Metallica and Led Zeppelin to JET ("J", then "E").
 
-- Starts with "a" would be \`'a%'\`.
-- Contains "a" anywhere would be \`'%a%'\`.
-- Exactly two characters ending in "a" would be \`'_a'\` (no %).
+- Starts with "e" would be \`'e%'\`.
+- Contains "e" anywhere would be \`'%e%'\`.
+- Exactly two characters ending in "e" would be \`'_e'\` (no %).
 
-MySQL's default comparison ignores case, so \`'_A%'\` returns the same rows.`,
+MySQL's default comparison ignores case, which is why JET is in, and \`'_E%'\` returns the same 42 rows. (It ignores accents too, so in MySQL an "é" in second place would also match. No artist here has one.)`,
   },
   {
     id: 'q-filter-4',
@@ -214,12 +216,12 @@ which gives 8 (3 American + 5 Canadian). Or avoid the OR entirely: \`WHERE Count
       'No: BETWEEN leaves out its end points, so it loses Jan 1 and Dec 31',
       "No: you can't compare a DATETIME with a text string like '2023-01-01'",
       'Yes, and they would match on any data, whatever the times',
-      'Yes, both give 83, but only because every InvoiceDate here is at 00:00:00. An invoice at 2023-12-31 14:30 would be missed by BETWEEN',
+      'Yes, both give 83 here, but they are not the same filter: an invoice at 2023-12-31 14:30 would be counted by YEAR and missed by BETWEEN',
     ],
     answer: 3,
     explain: `BETWEEN is **inclusive** on both ends: \`x BETWEEN a AND b\` means \`x >= a AND x <= b\`. So the first option is wrong.
 
-The catch is the time part. Against a DATETIME, \`'2023-12-31'\` means \`2023-12-31 00:00:00\`, the very first second of Dec 31. A row at 14:30 that day is *later* than the upper bound and would be dropped. In Chinook every InvoiceDate is at midnight, so both give 83 here, but the YEAR version (or \`>= '2023-01-01' AND < '2024-01-01'\`) is the one that's right for any data.
+The catch is the time part. Against a DATETIME, \`'2023-12-31'\` means \`2023-12-31 00:00:00\`, the very first second of Dec 31. A row at 14:30 that day is *later* than the upper bound and would be dropped. Chinook gets lucky: every InvoiceDate is at midnight (and no invoice falls on Dec 31 at all), so both give 83 here. The YEAR version (or \`InvoiceDate >= '2023-01-01' AND InvoiceDate < '2024-01-01'\`) is the one that's right for any data.
 
 Comparing a DATETIME with a date string is completely normal in MySQL: it converts the string for you.`,
   },
@@ -229,18 +231,18 @@ Comparing a DATETIME with a date string is completely normal in MySQL: it conver
     id: 'q-agg-1',
     topic: 'agg',
     kind: 'output',
-    prompt: `Track has 3503 rows, and 977 of them have no Composer (NULL). What does this return?`,
-    sql: `SELECT COUNT(*), COUNT(Composer), COUNT(DISTINCT Composer)
-FROM Track;`,
-    options: ['3503, 2526, 853', '3503, 3503, 853', '2526, 2526, 853', '3503, 2526, 2526'],
+    prompt: `Customer has 59 rows. 29 customers have no State (NULL), and the other 30 live in 25 different states. What does this return?`,
+    sql: `SELECT COUNT(*), COUNT(State), COUNT(DISTINCT State)
+FROM Customer;`,
+    options: ['59, 30, 25', '59, 59, 26', '30, 30, 25', '59, 30, 26'],
     answer: 0,
     explain: `Three different questions:
 
-- \`COUNT(*)\` counts **rows**: 3503. NULLs don't matter, a row is a row.
-- \`COUNT(Composer)\` counts rows where Composer is **not NULL**: 3503 minus 977 = 2526.
-- \`COUNT(DISTINCT Composer)\` counts **different** non-NULL composers: 853. Many tracks share a composer (Steve Harris alone is credited on 80 Iron Maiden tracks).
+- \`COUNT(*)\` counts **rows**: 59. NULLs don't matter, a row is a row.
+- \`COUNT(State)\` counts rows where State is **not NULL**: 59 minus 29 = 30.
+- \`COUNT(DISTINCT State)\` counts **different non-NULL** states: 25. Several customers share a state (three in CA, three in SP, two in ON), and NULL is not counted as a state at all.
 
-The tempting mistake is thinking COUNT(column) counts every row. It never counts NULLs.`,
+The tempting mistakes: thinking COUNT(column) counts every row (it never counts NULLs), and thinking NULL counts as one more distinct value. Careful, because \`SELECT DISTINCT State\` *does* list NULL as a row of its own: it returns 26 rows, while \`COUNT(DISTINCT State)\` says 25.`,
   },
   {
     id: 'q-agg-2',
@@ -289,7 +291,7 @@ FROM Track
 WHERE Milliseconds > (SELECT AVG(Milliseconds) FROM Track);
 \`\`\`
 
-That's 494 tracks. The HAVING idea is tempting but wrong: without GROUP BY the whole table is one single group, and plain \`Milliseconds\` is not one value for that group, so MySQL 8 rejects that too. Comparing a decimal with an integer is perfectly fine.`,
+That's 494 tracks. The HAVING idea is tempting but wrong: an aggregate in HAVING with no GROUP BY makes the whole table one single group, and plain \`Name\` and \`Milliseconds\` are not one value for that group, so MySQL 8 rejects that too (error 1140). Comparing a decimal with an integer is perfectly fine.`,
   },
   {
     id: 'q-agg-4',
@@ -406,7 +408,7 @@ GROUP BY ar.ArtistId, ar.Name;`,
     answer: 3,
     explain: `After GROUP BY, each artist is **one** row. AC/DC has 2 albums, Iron Maiden has 21: which Title should that single row show? There's no right answer, so MySQL 8 (ONLY_FULL_GROUP_BY is on by default) stops with error 1055.
 
-The rule: every column in SELECT must either be in GROUP BY or be inside an aggregate. Fix it by dropping \`al.Title\`, or by aggregating it: \`MIN(al.Title)\`, or \`GROUP_CONCAT(al.Title SEPARATOR ', ')\` for the full list.
+The safe rule: every column in SELECT must either be in GROUP BY or be inside an aggregate. (MySQL is a little more generous: it also accepts a column that is *fully determined* by the GROUP BY columns. Group by the primary key \`ar.ArtistId\`, and \`ar.Name\` is allowed even without listing it, because one ArtistId has exactly one Name. \`al.Title\` is not determined by ArtistId, so that exception doesn't save it.) Fix it by dropping \`al.Title\`, or by aggregating it: \`MIN(al.Title)\`, or \`GROUP_CONCAT(al.Title SEPARATOR ', ')\` for the full list.
 
 "Shows the first title" is how old MySQL 5.6 and SQLite behave: they silently pick some row. MySQL 8 refuses, and so does Run here. \`COUNT(*)\` is fine in an inner join: there are no NULL-filled rows to worry about.`,
   },
@@ -485,7 +487,7 @@ GROUP BY CustomerId;`,
 FROM Customer
 GROUP BY Country
 HAVING n > 4
-ORDER BY n DESC;`,
+ORDER BY n DESC, Country;`,
     options: [
       'Yes: MySQL lets HAVING and ORDER BY use SELECT aliases (only WHERE cannot)',
       'No: HAVING runs before SELECT, so it cannot see n',
@@ -493,7 +495,7 @@ ORDER BY n DESC;`,
       'No: aliases can only be used in WHERE',
     ],
     answer: 0,
-    explain: `It runs and returns 4 countries: USA (13), Canada (8), then France and Brazil (5 each).
+    explain: `It runs and returns 4 countries: USA (13), Canada (8), then Brazil and France (5 each, in alphabetical order thanks to the tie-breaker \`Country\`).
 
 **ORDER BY** runs after SELECT, so aliases are fine there in every database. **HAVING** is the interesting one: logically it runs before SELECT, and standard SQL says it shouldn't see aliases, but MySQL allows it as an extension. **WHERE** can never use them.
 
@@ -927,7 +929,9 @@ WHERE Milliseconds > ALL (SELECT Milliseconds FROM Track WHERE AlbumId = 1);`,
     answer: 0,
     explain: `\`> ALL (...)\` means "greater than every value in the list", which is the same as "greater than the biggest one". So this equals \`Milliseconds > (SELECT MAX(Milliseconds) FROM Track WHERE AlbumId = 1)\`: 706 tracks.
 
-"At least one" is \`> ANY (...)\`, the same as "greater than the *smallest*" (199,836 ms), which gives 2751 tracks. ALL and ANY exist precisely so that a comparison can accept a subquery with many rows, so there's no error here.`,
+"At least one" is \`> ANY (...)\`, the same as "greater than the *smallest*" (199,836 ms), which gives 2751 tracks. ALL and ANY exist precisely so that a comparison can accept a subquery with many rows, so there's no error here.
+
+Two edge cases where \`> ALL\` and \`> MAX\` part ways: if the subquery returns **no rows**, \`> ALL\` is TRUE for every row (there is nothing to beat), while \`> (SELECT MAX(...))\` compares with NULL and keeps nothing. And a **NULL** in the list stops \`> ALL\` from ever being TRUE, just like the NOT IN trap.`,
   },
 
   // ---------------------------------------------------------------- func
@@ -1101,13 +1105,13 @@ Combining different tables is the whole point of UNION. Column **names** don't h
     sql: `UPDATE Track
 SET UnitPrice = 1.29;`,
     options: [
-      'Error: UPDATE requires a WHERE clause',
+      'An error: UPDATE without a WHERE clause is not valid SQL',
       'Changes only the first row of Track',
       'Sets UnitPrice to 1.29 for every track, all 3503 of them',
       'Nothing: with no WHERE there is nothing to match',
     ],
     answer: 2,
-    explain: `No WHERE means **no filter**: every row is updated. "3503 rows updated" is the message nobody wants to see. (It's safe to run here: quiz runs are always undone.)
+    explain: `No WHERE means **no filter**: every row is updated. MySQL answers "3503 row(s) affected", the message nobody wants to see. (It's safe to run here: quiz runs are always undone.)
 
 WHERE is optional in UPDATE and DELETE, exactly as in SELECT. MySQL Workbench has a "safe updates" setting that blocks this kind of statement (error 1175), but that's a safety net in the tool, not a rule of SQL.
 

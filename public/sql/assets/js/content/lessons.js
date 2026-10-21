@@ -15,8 +15,8 @@ export const LESSONS = [
         h: 'Look around first: SHOW TABLES and DESCRIBE',
         md: `You know Sakila by heart. Chinook you don't, yet. Spend thirty seconds looking before you write anything.
 
-- \`SHOW TABLES;\` lists the 11 tables.
-- \`DESCRIBE Track;\` shows every column with its type, whether it may be NULL, and its key: \`PRI\` is the primary key, \`MUL\` marks a foreign key column.
+- \`SHOW TABLES;\` lists the 11 tables. (MySQL on Windows lists them in lowercase, like \`track\`; there, any capitalisation works.)
+- \`DESCRIBE Track;\` shows every column with its type, whether it may be NULL, and its key: \`PRI\` is the primary key, \`MUL\` means an index that allows repeated values, which in Chinook marks the foreign key columns.
 
 Chinook names are **singular and PascalCase**: \`Track\`, not \`tracks\`; \`TrackId\`, not \`track_id\`. The Sakila map in your head: film → Track, actor → Artist, category → Genre, customer → Customer, staff → Employee, payment/rental → Invoice and InvoiceLine.`,
         examples: [
@@ -28,7 +28,7 @@ Chinook names are **singular and PascalCase**: \`Track\`, not \`tracks\`; \`Trac
         h: 'Columns, aliases and calculated columns',
         md: `\`SELECT\` picks the columns, \`FROM\` picks the table. \`SELECT *\` is fine for peeking, but on the exam name exactly the columns you were asked for, in that order.
 
-\`AS\` renames a column in the output. Columns can be calculated on the fly: \`Milliseconds / 60000\` turns a track length into minutes. In MySQL, dividing two integers gives a decimal (5.72865, not 5), so wrap it in \`ROUND(..., 2)\` to get something readable.
+\`AS\` renames a column in the output. Columns can be calculated on the fly: \`Milliseconds / 60000\` turns a track length into minutes. In MySQL, dividing two integers gives a decimal (5.7287, not 5; MySQL shows four decimals by default, the Playground a few more), so wrap it in \`ROUND(..., 2)\` to get something readable.
 
 An alias that contains spaces or brackets needs backticks around it, as in the second example. Easier to skip the spaces: \`AS LengthMin\`.`,
         examples: [
@@ -44,7 +44,7 @@ LIMIT 5;`, note: 'Backticks let an alias contain spaces and brackets.' },
         h: 'DISTINCT: one row per different value',
         md: `\`DISTINCT\` removes duplicate **rows** from the result. It applies to the whole row, not just the first column: \`SELECT DISTINCT Country, City\` gives one row per different (Country, City) pair.
 
-Chinook has 59 customers in 24 countries, so \`SELECT DISTINCT Country FROM Customer\` returns 24 rows. Tracks come in only two prices: 0.99, and 1.99 for the 213 video tracks (TV episodes from shows like Lost and The Office).`,
+Chinook has 59 customers in 24 countries, so \`SELECT DISTINCT Country FROM Customer\` returns 24 rows. Tracks come in only two prices: 0.99, and 1.99 for 213 tracks that are all videos (TV episodes from shows like Lost and The Office).`,
         examples: [
           { sql: `SELECT DISTINCT UnitPrice FROM Track;`, note: 'Only two prices in the whole store.' },
           { sql: `SELECT DISTINCT Country, City
@@ -73,7 +73,7 @@ LIMIT 5, 5;`, note: 'Rows 6 to 10 of the same ranking: skip 5, take 5.' },
           { sql: `SELECT BillingCountry, BillingCity, Total
 FROM Invoice
 ORDER BY Total DESC, BillingCountry
-LIMIT 5;`, note: 'The second key decides the order of the two 21.86 invoices.' },
+LIMIT 5;`, note: 'The second key orders the two 21.86 invoices, and decides which of the two 18.86 invoices gets fifth place.' },
         ],
       },
     ],
@@ -127,7 +127,7 @@ WHERE (Country = 'USA' OR Country = 'Canada') AND SupportRepId = 3;`, note: 'Wit
 - \`Total BETWEEN 0.99 AND 1.98\` is **inclusive on both ends**: it means \`Total >= 0.99 AND Total <= 1.98\`. The smaller value goes first.
 - \`NOT\` flips a condition: \`NOT IN (...)\`, \`NOT BETWEEN\`, \`NOT LIKE\`, or \`NOT (a OR b)\`.
 
-Dates need a little care. \`InvoiceDate\` is a DATETIME (\`2025-12-22 00:00:00\`), so for "December 2025" the safe patterns are \`YEAR(InvoiceDate) = 2025 AND MONTH(InvoiceDate) = 12\`, or a half-open range: \`>=\` the first day and \`<\` the first day of the next month. \`BETWEEN '2025-12-01' AND '2025-12-31'\` stops at midnight at the start of the 31st, so anything later that day would be missed.`,
+Dates need a little care. \`InvoiceDate\` is a DATETIME (\`2025-12-22 00:00:00\`), so for "December 2025" the safe patterns are \`YEAR(InvoiceDate) = 2025 AND MONTH(InvoiceDate) = 12\`, or a half-open range: \`>=\` the first day and \`<\` the first day of the next month. \`BETWEEN '2025-12-01' AND '2025-12-31'\` stops at midnight at the start of the 31st, so anything later that day would be missed. (Every Chinook time is midnight, so here it happens to give the right answer, but the half-open range is the version that is always right.)`,
         examples: [
           { sql: `SELECT FirstName, LastName, Country
 FROM Customer
@@ -200,7 +200,7 @@ If you want the NULL rows too, say so: \`WHERE Composer <> 'AC/DC' OR Composer I
 
 - \`COUNT\` how many, \`SUM\` total, \`AVG\` mean, \`MIN\` / \`MAX\` smallest and largest.
 - MIN and MAX also work on text (alphabetical order) and dates (earliest and latest).
-- \`ROUND(x, 2)\` keeps money readable: unrounded, \`AVG(Total)\` is 5.651941747572815.
+- \`ROUND(x, 2)\` keeps money readable: unrounded, MySQL shows \`AVG(Total)\` as 5.651942 (the Playground shows even more decimals).
 
 The whole store in one line: 412 invoices worth 2328.60.`,
         examples: [
@@ -215,12 +215,12 @@ FROM Invoice;`, note: 'The whole table, one row.' },
         md: `Three different questions:
 
 - \`COUNT(*)\` counts **rows**, NULLs or not.
-- \`COUNT(Composer)\` counts rows where Composer is **not NULL**.
-- \`COUNT(DISTINCT Composer)\` counts **different** non-NULL values.
+- \`COUNT(State)\` counts rows where State is **not NULL**.
+- \`COUNT(DISTINCT State)\` counts **different** non-NULL values.
 
-On Track that is 3503 rows, 2526 with a composer, 853 different composers. For "how many customers have a company?", \`COUNT(Company)\` is the whole answer.`,
+On Customer that is 59 rows, 30 with a State, 25 different states. For "how many customers have a company?", \`COUNT(Company)\` is the whole answer.`,
         examples: [
-          { sql: `SELECT COUNT(*), COUNT(Composer), COUNT(DISTINCT Composer) FROM Track;`, note: '3503 / 2526 / 853: three different questions.' },
+          { sql: `SELECT COUNT(*), COUNT(State), COUNT(DISTINCT State) FROM Customer;`, note: '59 / 30 / 25: three different questions.' },
           { sql: `SELECT COUNT(*) AS Customers, COUNT(Company) AS WithCompany, COUNT(DISTINCT Country) AS Countries
 FROM Customer;`, note: '59 customers, 10 with a company, 24 countries.' },
         ],
@@ -260,7 +260,7 @@ WHERE BillingCountry = 'Japan';`, note: 'No Japanese invoices: COUNT says 0, SUM
       `\`AVG\` ignores NULLs and divides by the non-NULL count.`,
       `Aggregates can't go in WHERE: \`WHERE Total > AVG(Total)\` is an error. Use a subquery, or HAVING for groups.`,
       `\`SUM\` over no rows is NULL, not 0. Wrap it in \`IFNULL(..., 0)\` when the answer should be 0.`,
-      `For "the longest track", \`SELECT Name, MAX(Milliseconds)\` is wrong (MySQL 8 rejects it). Use \`ORDER BY Milliseconds DESC LIMIT 1\` or \`WHERE Milliseconds = (SELECT MAX(Milliseconds) FROM Track)\`.`,
+      `For "the longest track", \`SELECT Name, MAX(Milliseconds)\` is wrong (MySQL 8 rejects it). Use \`WHERE Milliseconds = (SELECT MAX(Milliseconds) FROM Track)\`, which also returns ties, or \`ORDER BY Milliseconds DESC LIMIT 1\`, which silently keeps just one of them.`,
     ],
     practice: ['a01', 'a02', 'a04', 'a05', 'a06', 'a07'],
   },
@@ -312,7 +312,7 @@ If a condition doesn't involve an aggregate, it belongs in WHERE.`,
 FROM Customer
 GROUP BY Country
 HAVING COUNT(*) >= 5
-ORDER BY Customers DESC;`, note: 'Countries with at least 5 customers: USA, Canada, then Brazil and France with 5 each.' },
+ORDER BY Customers DESC, Country;`, note: 'Countries with at least 5 customers: USA, Canada, then Brazil and France with 5 each.' },
           { sql: `SELECT GenreId, COUNT(*) AS Tracks
 FROM Track
 WHERE UnitPrice = 0.99
@@ -373,9 +373,11 @@ SELECT Name, Milliseconds FROM Track ORDER BY Milliseconds DESC LIMIT 1;
 SELECT Name, Milliseconds FROM Track WHERE Milliseconds = (SELECT MAX(Milliseconds) FROM Track);
 \`\`\`
 
-The second also returns ties, if there are any.
+The first returns exactly one row even if several tracks tie for the longest; the second returns all of them. When the question says "the longest" and ties are possible, prefer the second.
 
-The same rule bites with GROUP BY: \`SELECT GenreId, Name, COUNT(*) FROM Track GROUP BY GenreId\` is rejected, because one genre has many track names. When you group by an id and also want the name, group by both: \`GROUP BY g.GenreId, g.Name\`.`,
+The same rule bites with GROUP BY: \`SELECT GenreId, Name, COUNT(*) FROM Track GROUP BY GenreId\` is rejected, because one genre has many track names. When you group by an id and also want the name, group by both: \`GROUP BY g.GenreId, g.Name\`.
+
+MySQL makes one exception: if you group by a table's primary key, it knows the other columns of that table can't vary inside the group, so \`GROUP BY g.GenreId\` alone would also let you show \`g.Name\`. Listing both is never wrong, so that's the habit to keep.`,
         examples: [
           { sql: `SELECT Name, MAX(Milliseconds) FROM Track;`, note: 'The Playground runs it with a warning; MySQL 8 refuses it outright.', expectWarning: true },
           { sql: `SELECT Name, Milliseconds
@@ -417,6 +419,7 @@ Unlike Sakila's film_actor, there is no bridge table between tracks and artists:
 FROM Track t
 JOIN Album al ON al.AlbumId = t.AlbumId
 JOIN Artist ar ON ar.ArtistId = al.ArtistId
+ORDER BY t.TrackId
 LIMIT 5;`, note: 'Track → Album → Artist: two joins to name the artist of each track.' },
         ],
       },
@@ -432,6 +435,7 @@ Joins are also how ids turn into names. Track only stores \`GenreId = 1\`; the G
 FROM Track t
 JOIN Genre g ON g.GenreId = t.GenreId
 JOIN MediaType mt ON mt.MediaTypeId = t.MediaTypeId
+ORDER BY t.TrackId
 LIMIT 5;`, note: 'Ids turned into names.' },
           { sql: `SELECT g.Name AS Genre, COUNT(*) AS Tracks
 FROM Track t
@@ -456,6 +460,7 @@ LIMIT 5;`, note: 'Deliberate error: which Name, the track or the genre?', expect
           { sql: `SELECT t.Name AS Track, g.Name AS Genre
 FROM Track t
 JOIN Genre g ON g.GenreId = t.GenreId
+ORDER BY t.TrackId
 LIMIT 5;`, note: 'Prefixed and aliased: no doubt left.' },
         ],
       },
@@ -594,7 +599,7 @@ LEFT JOIN Employee m ON e.ReportsTo = m.EmployeeId;`, note: 'The same table twic
 FROM Employee e
 LEFT JOIN Customer c ON c.SupportRepId = e.EmployeeId
 GROUP BY e.EmployeeId, e.FirstName, e.LastName
-ORDER BY Customers DESC;`, note: 'Customers per support rep. Only the three sales support agents have any.' },
+ORDER BY Customers DESC, e.EmployeeId;`, note: 'Customers per support rep. Only the three sales support agents have any.' },
         ],
       },
       {
@@ -616,7 +621,7 @@ WHERE p.Name = 'Grunge';`, note: 'The 15 tracks of the Grunge playlist, through 
 FROM Playlist p
 LEFT JOIN PlaylistTrack pt ON pt.PlaylistId = p.PlaylistId
 GROUP BY p.PlaylistId, p.Name
-ORDER BY Tracks DESC;`, note: 'All 18 playlists, including the 4 empty ones.' },
+ORDER BY Tracks DESC, p.PlaylistId;`, note: 'All 18 playlists, including the 4 empty ones.' },
         ],
       },
     ],
@@ -653,8 +658,8 @@ Same trick for "the longest track" or "the most recent invoice": \`= (SELECT MAX
           { sql: `SELECT InvoiceId, CustomerId, Total
 FROM Invoice
 WHERE Total > (SELECT AVG(Total) FROM Invoice)
-ORDER BY Total DESC
-LIMIT 5;`, note: '179 invoices beat the 5.65 average; these are the top five.' },
+ORDER BY Total DESC, InvoiceId
+LIMIT 5;`, note: '179 invoices beat the 5.65 average; these are the top five. Two invoices tie at 18.86 for fifth place, so InvoiceId decides.' },
           { sql: `SELECT Name, Milliseconds
 FROM Track
 WHERE Milliseconds = (SELECT MAX(Milliseconds) FROM Track);`, note: 'The longest track, with ties included if there were any.' },
@@ -766,7 +771,8 @@ LIMIT 5;`, note: '> ALL: longer than every Metal track (225 tracks qualify).' },
     ],
     pitfalls: [
       `\`NOT IN\` with a NULL anywhere in the list returns no rows. Add \`WHERE col IS NOT NULL\` inside the subquery, or use NOT EXISTS.`,
-      `After \`=\`, \`<\` or \`>\` the subquery must return a single value. If it can return several rows, MySQL says "Subquery returns more than 1 row": use IN, ANY or ALL.`,
+      `After \`=\`, \`<\` or \`>\` the subquery must return a single value. If it returns several rows, MySQL stops with "Subquery returns more than 1 row". When that can happen, use IN, ANY or ALL.`,
+      `\`> ALL\` is "bigger than the MAX" only when the subquery returns values and none of them is NULL. Over an empty subquery it is true for every row (there is nothing to beat), and a NULL in the list makes it never true: the same trap as NOT IN, which is really \`<> ALL\`.`,
       `A subquery used with IN must select exactly one column.`,
       `A derived table in FROM needs an alias in MySQL: \`) AS per_customer\`. Without it, error 1248.`,
       `In a correlated subquery, give the inner table its own alias (\`t2\`) and qualify both sides of the link.`,
@@ -832,7 +838,8 @@ LIMIT 5;`, note: 'NULL replaced by a readable label.' },
        CONCAT(City, ', ', State) AS Broken,
        CONCAT(City, ', ', COALESCE(State, Country)) AS Fixed
 FROM Customer
-LIMIT 5;`, note: 'One NULL argument makes all of CONCAT NULL. COALESCE fills the hole.' },
+ORDER BY CustomerId
+LIMIT 5;`, note: 'One NULL argument makes all of CONCAT NULL (Leonie Köhler, row 2). COALESCE fills the hole.' },
         ],
       },
       {
@@ -906,7 +913,8 @@ Round at the end, not in the middle: \`ROUND(AVG(Total), 2)\`, not \`AVG(ROUND(T
        (Milliseconds % 60000) DIV 1000 AS Secs,
        CONCAT(Milliseconds DIV 60000, ':', LPAD((Milliseconds % 60000) DIV 1000, 2, '0')) AS Length
 FROM Track
-LIMIT 5;`, note: '343719 ms is 5 minutes and 43 seconds: DIV for the minutes, % for what is left over.' },
+ORDER BY TrackId
+LIMIT 5;`, note: '343719 ms is 5 minutes and 43 seconds: DIV for the minutes, % for what is left over. LPAD pads the seconds to two digits (3:05, not 3:5).' },
         ],
       },
     ],
@@ -915,7 +923,7 @@ LIMIT 5;`, note: '343719 ms is 5 minutes and 43 seconds: DIV for the minutes, % 
       `\`CONCAT\` returns NULL if any argument is NULL. Wrap nullable columns in IFNULL or COALESCE.`,
       `\`||\` is OR in MySQL, not string concatenation. Use CONCAT.`,
       `\`DATEDIFF(later, earlier)\` but \`TIMESTAMPDIFF(unit, earlier, later)\`: the orders are opposite.`,
-      `String positions start at 1: \`SUBSTRING(s, 1, 3)\` is the first three characters. Position 0 is not the first letter.`,
+      `String positions start at 1: \`SUBSTRING(s, 1, 3)\` is the first three characters. \`SUBSTRING(s, 0, 3)\` returns an empty string in MySQL, not an error.`,
     ],
     practice: ['c01', 'c02', 'c03', 'c04', 'c05', 'c06'],
   },
@@ -935,18 +943,18 @@ LIMIT 5;`, note: '343719 ms is 5 minutes and 43 seconds: DIV for the minutes, % 
 - \`UNION ALL\` keeps every row from both queries.
 - \`UNION\` removes duplicate rows from the combined result, like a DISTINCT over everything.
 
-First names of customers and employees together: 67 rows with UNION ALL, 63 with UNION, because Frank, Mark, Robert and Steve each appear twice.
+Cities of customers and employees together: 67 rows with UNION ALL, but only 55 with UNION. UNION removes every repeat, not just the ones between the two queries: two customers live in Paris, five employees work in Calgary, and Edmonton shows up on both sides.
 
 When duplicates are impossible, or wanted, use UNION ALL: it skips the de-duplication work.`,
         examples: [
           { sql: `SELECT COUNT(*) AS AllRows
-FROM (SELECT FirstName FROM Customer
+FROM (SELECT City FROM Customer
       UNION ALL
-      SELECT FirstName FROM Employee) AS x;`, note: '67: 59 customers plus 8 employees.' },
-          { sql: `SELECT COUNT(*) AS DifferentNames
-FROM (SELECT FirstName FROM Customer
+      SELECT City FROM Employee) AS x;`, note: '67: 59 customers plus 8 employees.' },
+          { sql: `SELECT COUNT(*) AS DifferentCities
+FROM (SELECT City FROM Customer
       UNION
-      SELECT FirstName FROM Employee) AS x;`, note: '63: UNION removed the four repeated names.' },
+      SELECT City FROM Employee) AS x;`, note: '55: every city is kept once, whichever query it came from.' },
           { sql: `SELECT Country FROM Customer
 UNION
 SELECT Country FROM Employee
@@ -1010,7 +1018,7 @@ SELECT 'Tracks', COUNT(*) FROM Track;`, note: 'Three counts from three tables in
 
 \`INSERT INTO table (col1, col2, ...) VALUES (v1, v2, ...);\` Always write the column list: it documents what goes where and keeps working if the table gains columns.
 
-Chinook's ids are plain \`INT\` primary keys, **not AUTO_INCREMENT**, so you supply the id yourself. Check the highest one first: \`SELECT MAX(ArtistId) FROM Artist\` is 275, so a new artist gets 276. Columns you leave out get their default, which in Chinook is NULL, and that fails for a NOT NULL column such as Customer.Email.
+Chinook's ids are plain \`INT\` primary keys, **not AUTO_INCREMENT**, so you supply the id yourself. Check the highest one first: \`SELECT MAX(ArtistId) FROM Artist\` is 275, so a new artist gets 276. Columns you leave out get their default value. Chinook's tables define no defaults, so a nullable column you leave out becomes NULL, and leaving out a NOT NULL column such as Customer.Email is an error ("Field 'Email' doesn't have a default value").
 
 Several rows at once: \`VALUES (...), (...), (...)\`.`,
         examples: [
@@ -1057,7 +1065,9 @@ SELECT COUNT(*) AS TracksLeft FROM PlaylistTrack WHERE PlaylistId = 18;`, note: 
         h: 'CREATE VIEW: a saved query',
         md: `A view is a named SELECT. It stores no data: every time you query it, its SELECT runs again on the current tables. Use one to give a complicated join a simple name.
 
-After \`CREATE VIEW CustomerSpending AS SELECT ...;\`, you can write \`SELECT * FROM CustomerSpending\` as if it were a table. Every column of a view needs a unique name, so alias the expressions (\`AS Spent\`). \`DROP VIEW CustomerSpending;\` removes it.`,
+After \`CREATE VIEW CustomerSpending AS SELECT ...;\`, you can write \`SELECT * FROM CustomerSpending\` as if it were a table. \`DROP VIEW CustomerSpending;\` removes it.
+
+Every column of a view needs a unique name. A view that selects \`t.Name, g.Name\` fails in MySQL with "Duplicate column name 'Name'", so alias them (\`t.Name AS Track, g.Name AS Genre\`). Alias calculated columns too (\`AS Spent\`), or the column ends up named after the whole expression, like \`ROUND(SUM(i.Total), 2)\`.`,
         examples: [
           { sql: `CREATE VIEW CustomerSpending AS
 SELECT c.CustomerId, CONCAT(c.FirstName, ' ', c.LastName) AS Customer, c.Country,
@@ -1066,7 +1076,7 @@ FROM Customer c
 JOIN Invoice i ON i.CustomerId = c.CustomerId
 GROUP BY c.CustomerId, c.FirstName, c.LastName, c.Country;
 
-SELECT * FROM CustomerSpending ORDER BY Spent DESC LIMIT 5;`, note: 'Create once, then query it like a table.' },
+SELECT * FROM CustomerSpending ORDER BY Spent DESC, CustomerId LIMIT 5;`, note: 'Create once, then query it like a table.' },
         ],
       },
       {
@@ -1082,7 +1092,7 @@ CREATE TABLE Review (
 \`\`\`
 
 - **Primary key**: identifies each row, so it is unique and never NULL. One per table, though it can span several columns, like PlaylistTrack's (PlaylistId, TrackId).
-- **Foreign key**: a column whose value must exist as a key in another table. Every Review.TrackId must be a real TrackId. It's also what you will join on.
+- **Foreign key**: a column whose value must exist as a key in the table it references, or be NULL if the column allows NULL (Employee.ReportsTo even references its own table). Every Review.TrackId must be a real TrackId. It's also what you will join on.
 - Common types: \`INT\`, \`DECIMAL(10,2)\` for money, \`VARCHAR(n)\` for text, \`DATE\` and \`DATETIME\`.
 - \`NOT NULL\` makes a column required. \`AUTO_INCREMENT\` (MySQL) numbers new rows for you; Chinook's own tables don't use it.`,
         examples: [
@@ -1130,7 +1140,7 @@ SUM(Total) OVER (PARTITION BY CustomerId)
 \`\`\`
 
 - \`PARTITION BY\` splits the rows into groups, like GROUP BY but without collapsing them. Leave it out and the whole result is one window.
-- \`ORDER BY\` inside OVER sets an order within the window. For SUM it turns the total into a **running** total.`,
+- \`ORDER BY\` inside OVER sets an order within the window. For SUM it turns the total into a **running** total. Rows that tie on that ORDER BY (two invoices on the same date) are added in together and show the same running total.`,
         examples: [
           { sql: `SELECT InvoiceId, CustomerId, Total,
        ROUND(SUM(Total) OVER (PARTITION BY CustomerId), 2) AS CustomerTotal,
@@ -1141,26 +1151,27 @@ ORDER BY CustomerId, InvoiceId;`, note: 'Every invoice stays, and each one can s
           { sql: `SELECT InvoiceId, InvoiceDate, Total,
        ROUND(SUM(Total) OVER (ORDER BY InvoiceDate), 2) AS RunningTotal
 FROM Invoice
-WHERE CustomerId = 1;`, note: 'ORDER BY inside OVER: a running total of customer 1\'s spending, ending at 39.62.' },
+WHERE CustomerId = 1
+ORDER BY InvoiceDate;`, note: 'ORDER BY inside OVER: a running total of customer 1\'s spending, ending at 39.62. The ORDER BY at the end sorts the output; the one inside OVER only drives the total.' },
         ],
       },
       {
         h: 'ROW_NUMBER, RANK, DENSE_RANK',
         md: `All three number the rows in the order given inside OVER (ORDER BY ...). They only differ on ties:
 
-- \`ROW_NUMBER()\`: 1, 2, 3, 4, 5. Always unique; ties are broken arbitrarily.
+- \`ROW_NUMBER()\`: 1, 2, 3, 4, 5. Always unique; ties are broken arbitrarily unless you add a second sort key (the example uses CustomerId).
 - \`RANK()\`: 1, 2, 3, 4, 4, 6. Ties share a rank, then the numbering skips.
 - \`DENSE_RANK()\`: 1, 2, 3, 4, 4, 5. Ties share, no gaps.
 
 In the example, customers 45 and 46 both spent 45.62, and three customers tie at 43.62. Compare the three columns on those rows.`,
         examples: [
           { sql: `SELECT CustomerId, ROUND(SUM(Total), 2) AS Spent,
-       ROW_NUMBER() OVER (ORDER BY SUM(Total) DESC) AS RowNum,
+       ROW_NUMBER() OVER (ORDER BY SUM(Total) DESC, CustomerId) AS RowNum,
        RANK()       OVER (ORDER BY SUM(Total) DESC) AS Rnk,
        DENSE_RANK() OVER (ORDER BY SUM(Total) DESC) AS DenseRnk
 FROM Invoice
 GROUP BY CustomerId
-ORDER BY Spent DESC
+ORDER BY Spent DESC, CustomerId
 LIMIT 10;`, note: 'Window functions can run over grouped results: here, total spend per customer.' },
         ],
       },
@@ -1181,7 +1192,7 @@ A Chinook twist: no track has sold more than twice, so most genres have many tra
         examples: [
           { sql: `SELECT Genre, Track, Sold
 FROM (SELECT g.Name AS Genre, t.Name AS Track, SUM(il.Quantity) AS Sold,
-             ROW_NUMBER() OVER (PARTITION BY g.GenreId ORDER BY SUM(il.Quantity) DESC, t.Name) AS rn
+             ROW_NUMBER() OVER (PARTITION BY g.GenreId ORDER BY SUM(il.Quantity) DESC, t.TrackId) AS rn
       FROM InvoiceLine il
       JOIN Track t ON t.TrackId = il.TrackId
       JOIN Genre g ON g.GenreId = t.GenreId
@@ -1214,13 +1225,13 @@ JOIN Genre g ON g.GenreId = t.GenreId
 WHERE t.Milliseconds = (SELECT MAX(t2.Milliseconds)
                         FROM Track t2
                         WHERE t2.GenreId = t.GenreId)
-ORDER BY Minutes DESC;`, note: 'The longest track in each genre, no window function needed.' },
+ORDER BY t.Milliseconds DESC;`, note: 'The longest track in each genre, no window function needed.' },
         ],
       },
     ],
     pitfalls: [
       `Window functions can't go in WHERE or HAVING. Compute them in a derived table and filter in the outer query.`,
-      `ROW_NUMBER gives exactly N rows per group; RANK and DENSE_RANK can give more when there are ties. Pick the one the question asks for.`,
+      `\`rn <= N\` with ROW_NUMBER gives exactly N rows per group (if the group has that many); RANK and DENSE_RANK can give more when there are ties. Pick the one the question asks for.`,
       `PARTITION BY doesn't collapse rows. If you want one row per group, that's GROUP BY.`,
       `RANK is a reserved word in MySQL 8. Alias the column Rnk (or anything else), not rank.`,
       `Without an ORDER BY inside OVER, ROW_NUMBER numbers the rows in no particular order.`,

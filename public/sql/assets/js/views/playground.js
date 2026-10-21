@@ -4,7 +4,7 @@ import * as sql from '../sqlclient.js';
 import { createWorkbench } from '../workbench.js';
 import { schemaDrawer } from './schema-drawer.js';
 
-const EXAMPLES = [
+export const EXAMPLES = [
   ['Look around', 'SHOW TABLES;\nDESCRIBE Track;'],
   ['Top 10 longest tracks', 'SELECT Name, ROUND(Milliseconds / 60000, 2) AS Minutes\nFROM Track\nORDER BY Milliseconds DESC\nLIMIT 10;'],
   ['Sales per year', 'SELECT YEAR(InvoiceDate) AS Year, COUNT(*) AS Invoices, SUM(Total) AS Revenue\nFROM Invoice\nGROUP BY YEAR(InvoiceDate)\nORDER BY Year;'],

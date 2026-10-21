@@ -133,8 +133,45 @@
   const UNITS = new Set(['YEAR', 'QUARTER', 'MONTH', 'WEEK', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'MICROSECOND']);
   const CMP = new Set(['=', '<>', '!=', '<', '>', '<=', '>=']);
 
+  const NUM_FUNCS = new Set(('YEAR MONTH DAY DAYOFMONTH HOUR MINUTE SECOND QUARTER WEEK WEEKDAY DAYOFWEEK DAYOFYEAR ' +
+    'LENGTH CHAR_LENGTH CHARACTER_LENGTH OCTET_LENGTH LOCATE INSTR DATEDIFF TIMESTAMPDIFF EXTRACT COUNT SUM AVG ' +
+    'ROUND FLOOR CEIL CEILING ABS MOD TRUNCATE POW POWER SQRT SIGN MYSQL_INT').split(' '));
+  const TEXT_FUNCS = new Set(('DATE_FORMAT SUBSTRING SUBSTR MID LEFT RIGHT SUBSTRING_INDEX CONCAT CONCAT_WS LPAD RPAD ' +
+    'TRIM LTRIM RTRIM REPLACE REVERSE UPPER LOWER UCASE LCASE DAYNAME MONTHNAME').split(' '));
+  let schemaCols = null;
+
   function rewrite(tokens) {
     let t = tokens.slice();
+
+    t = mysqlDml(t);
+    for (let i = 0; i < t.length; i++) {
+      if (t[i].t === 'word' && t[i].u === 'DISTINCT' && t[prevIdx(t, i)]?.u === 'UNION') t[i] = { t: 'ws', v: '' };
+    }
+
+    // (SELECT ... ORDER BY ... LIMIT n) UNION ALL (SELECT ...): valid MySQL, not SQLite.
+    // Turn each parenthesised part into SELECT * FROM (...).
+    {
+      let depth = 0;
+      for (let i = 0; i < t.length; i++) {
+        const x = t[i];
+        if (x.v === ')') { depth--; continue; }
+        if (x.v !== '(') continue;
+        if (depth === 0 && t[nextIdx(t, i)]?.u === 'SELECT') {
+          const prev = t[prevIdx(t, i)];
+          const close = matchParen(t, i);
+          const after = t[nextIdx(t, close)];
+          const isSet = w => w && w.t === 'word' && /^(UNION|INTERSECT|EXCEPT)$/.test(w.u);
+          const setOp = w => isSet(w) || (w && w.t === 'word' && /^(ALL|DISTINCT)$/.test(w.u) && isSet(t[prevIdx(t, t.indexOf(w))]));
+          const atStart = prevIdx(t, i) < 0;
+          if (close > 0 && (setOp(prev) || (atStart && after && after.t === 'word' && /^(UNION|INTERSECT|EXCEPT)$/.test(after.u)))) {
+            t.splice(i, 0, W('SELECT'), SP, OP('*'), SP, W('FROM'), SP);
+            i = close + 6;
+            continue;
+          }
+        }
+        depth++;
+      }
+    }
 
     // DB qualifier: Chinook.Track -> Track
     for (let i = 0; i < t.length; i++) {
@@ -156,13 +193,25 @@
           if (close > 0) {
             const last = prevIdx(t, close);
             const as = prevIdx(t, last);
+            // AS DECIMAL(p, s) / NUMERIC(p, s): MySQL rounds to s decimals
+            let asDec = -1;
+            { let depth = 0; for (let k = p; k < close; k++) { if (t[k].v === '(') depth++; else if (t[k].v === ')') depth--; else if (depth === 1 && t[k].u === 'AS' && /^(DECIMAL|NUMERIC|DEC)$/.test(t[nextIdx(t, k)]?.u || '')) asDec = k; } }
+            if (asDec > 0) {
+              const ty = nextIdx(t, asDec);
+              let scale = '0';
+              if (t[nextIdx(t, ty)]?.v === '(') { const nums = t.slice(nextIdx(t, ty), close).filter(x => x.t === 'num'); if (nums[1]) scale = nums[1].v; }
+              t.splice(asDec, close - asDec, OP(','), SP, { t: 'num', v: scale });
+              t[i] = W('ROUND');
+              continue;
+            }
             if (t[as] && t[as].u === 'AS' && t[last].t === 'word') {
               const ty = t[last].u;
               if (ty === 'DATE' || ty === 'DATETIME') {
                 t.splice(as, close - as); // drop "AS DATE"
                 t[i] = W(ty === 'DATE' ? 'DATE' : 'DATETIME');
-              } else if (ty === 'SIGNED' || ty === 'UNSIGNED') {
-                t[last] = W('INTEGER');
+              } else if (ty === 'SIGNED' || ty === 'UNSIGNED' || ty === 'INTEGER' || ty === 'INT') {
+                t.splice(as, close - as); // drop "AS SIGNED"
+                t[i] = W('mysql_int');
               }
             }
           }
@@ -193,6 +242,16 @@
       else if (w.t === 'word' && w.u === 'RLIKE') t[i] = W('REGEXP');
       else if (w.t === 'op' && w.v === '<=>') t[i] = W('IS');
       else if (w.t === 'op' && w.v === '&&') t[i] = W('AND');
+      else if (w.t === 'op' && w.v === '||') t[i] = W('OR');
+      else if (w.t === 'word' && w.u === 'POSITION' && t[nextIdx(t, i)]?.v === '(') {
+        // POSITION(sub IN str) -> LOCATE(sub, str)
+        const open = nextIdx(t, i), close = matchParen(t, open);
+        let depth = 0;
+        for (let k = open + 1; k < close; k++) {
+          if (t[k].v === '(') depth++; else if (t[k].v === ')') depth--;
+          else if (depth === 0 && t[k].t === 'word' && t[k].u === 'IN') { t[k] = OP(','); t[i] = W('LOCATE'); break; }
+        }
+      }
     }
 
     // TIMESTAMPDIFF(UNIT, ...) / EXTRACT(UNIT FROM x) / DATE_ADD(x, INTERVAL n UNIT)
@@ -266,7 +325,10 @@
       let repl;
       if (op === '=' && !all) { t[p] = W('IN'); repl = [OP('('), ...inner, OP(')')]; }
       else if ((op === '<>' || op === '!=') && all) { t[p] = W('NOT IN'); repl = [OP('('), ...inner, OP(')')]; }
-      else {
+      else if (all && op !== '=') {
+        const up = op === '>' || op === '>=';
+        repl = tokenize(`(WITH __q(v) AS (`).concat(inner, tokenize(`) SELECT CASE WHEN COUNT(*) = 0 THEN ${up ? '-1e308' : '1e308'} WHEN COUNT(v) < COUNT(*) THEN NULL ELSE ${up ? 'MAX' : 'MIN'}(v) END FROM __q)`));
+      } else {
         const wantMax = (op === '>' || op === '>=') === all;
         const agg = wantMax ? 'MAX' : 'MIN';
         repl = tokenize(`(WITH __q(v) AS (`).concat(inner, tokenize(`) SELECT ${agg}(v) FROM __q)`));
@@ -292,6 +354,86 @@
     for (const x of t) {
       if (x.t === 'str' && /^\d{4}-\d{2}-\d{2} 00:00:00$/.test(x.v)) x.v = x.v.slice(0, 10);
     }
+    // MySQL lets HAVING filter rows of a query without GROUP BY or aggregates; SQLite refuses.
+    // Top level only: HAVING c -> WHERE c, or WHERE a ... HAVING c -> WHERE (a) AND (c)
+    {
+      let depth = 0, where = -1, group = -1, having = -1, end = t.length, agg = false;
+      for (let i = 0; i < t.length; i++) {
+        const x = t[i];
+        if (x.v === '(') depth++;
+        else if (x.v === ')') depth--;
+        if (x.t === 'word' && AGG.has(x.u) && t[nextIdx(t, i)]?.v === '(') agg = true;
+        if (depth !== 0 || x.t !== 'word') continue;
+        if (x.u === 'WHERE' && where < 0) where = i;
+        else if (x.u === 'GROUP') group = i;
+        else if (x.u === 'HAVING' && having < 0) having = i;
+        else if (having >= 0 && end === t.length && (x.u === 'ORDER' || x.u === 'LIMIT' || x.u === 'UNION' || x.u === 'WINDOW')) end = i;
+        else if (x.u === 'UNION' && having < 0) break;
+      }
+      if (having >= 0 && group < 0 && !agg) {
+        if (where < 0 || where > having) t[having] = W('WHERE');
+        else {
+          t.splice(end, 0, OP(')'), SP);
+          t.splice(having, 1, OP(')'), SP, W('AND'), SP, OP('('));
+          t.splice(where + 1, 0, SP, OP('('));
+        }
+      }
+    }
+
+    // MySQL compares text case-insensitively even when neither side is a column (UPPER(x) = 'ac/dc',
+    // CONCAT(...) = 'luis rojas'). Columns already carry NOCASE; give compared literals the same.
+    // Number vs text, the MySQL way. SQLite only converts when a *column* is involved; MySQL also
+    // compares YEAR(d) = '2023' and DATE_FORMAT(d, '%m') = 3 as numbers, while
+    // DATE_FORMAT(d, '%Y') = '2023' stays text = text. So look at what the other side returns.
+    const NUMERIC = /^-?(0|[1-9]\d*)(\.\d*[1-9])?$/;
+    const side = (i, dir) => {
+      // describe the operand next to t[i] on the left (dir -1) or right (+1)
+      const j = dir < 0 ? prevIdx(t, i) : nextIdx(t, i);
+      const x = t[j];
+      if (!x) return null;
+      if (x.t === 'str' || x.t === 'num') return { kind: x.t, i: j };
+      if (dir < 0 && x.v === ')') {
+        let depth = 0, open = -1;
+        for (let k = j; k >= 0; k--) { if (t[k].v === ')') depth++; else if (t[k].v === '(' && --depth === 0) { open = k; break; } }
+        const f = t[prevIdx(t, open)];
+        return f && f.t === 'word' ? { kind: 'func', name: f.u, start: prevIdx(t, open), end: j } : { kind: 'expr' };
+      }
+      if (dir > 0 && x.t === 'word' && t[nextIdx(t, j)]?.v === '(') return { kind: 'func', name: x.u, start: j, end: matchParen(t, nextIdx(t, j)) };
+      if (x.t === 'word' || x.t === 'qident') {
+        const qualified = dir < 0 ? t[prevIdx(t, j)]?.v === '.' : t[nextIdx(t, j)]?.v === '.';
+        const col = qualified || (schemaCols && schemaCols.has(x.v.toLowerCase()));
+        return { kind: col ? 'col' : 'alias', i: j };
+      }
+      return { kind: 'expr' };
+    };
+    const numberish = o => o && ((o.kind === 'func' && NUM_FUNCS.has(o.name)) || o.kind === 'alias');
+    const textish = o => o && o.kind === 'func' && TEXT_FUNCS.has(o.name);
+    const wraps = [];
+    for (let i = 0; i < t.length; i++) {
+      const x = t[i];
+      if (x.t === 'word' && x.u === 'IN') {
+        const o = nextIdx(t, i);
+        if (t[o]?.v !== '(' || /^(SELECT|WITH)$/.test(t[nextIdx(t, o)]?.u || '') || !numberish(side(i, -1))) continue;
+        const c = matchParen(t, o);
+        for (let k = o + 1; k < c; k++) if (t[k].t === 'str' && NUMERIC.test(t[k].v)) t[k] = { t: 'num', v: t[k].v };
+        continue;
+      }
+      if (x.t !== 'op' || !CMP.has(x.v)) continue;
+      const L = side(i, -1), R = side(i, 1);
+      for (const [lit, other] of [[L, R], [R, L]]) {
+        if (!lit || !other) continue;
+        if (lit.kind === 'str' && NUMERIC.test(t[lit.i].v) && numberish(other)) t[lit.i] = { t: 'num', v: t[lit.i].v };
+        else if (lit.kind === 'num' && textish(other)) wraps.push(other);
+      }
+    }
+    // text function compared with a number: (f(...) * 1) makes SQLite compare numerically, like MySQL
+    wraps.sort((a, b) => b.start - a.start).forEach(f => { t.splice(f.end + 1, 0, SP, OP('*'), SP, { t: 'num', v: '1' }, OP(')')); t.splice(f.start, 0, OP('(')); });
+    // text literals compared with anything: case-insensitive, like MySQL's collation
+    for (let i = 0; i < t.length; i++) {
+      if (t[i].t !== 'str') continue;
+      const p = t[prevIdx(t, i)];
+      if (p && p.t === 'op' && CMP.has(p.v)) { t.splice(i + 1, 0, SP, W('COLLATE'), SP, W('NOCASE')); i += 4; }
+    }
     // LIKE 'a\_b' : MySQL's default escape character is the backslash
     for (let i = 0; i < t.length; i++) {
       if (t[i].t !== 'word' || t[i].u !== 'LIKE') continue;
@@ -305,6 +447,84 @@
     }
     for (let i = 0; i < t.length; i++) {
       if (t[i].t === 'word' && t[i].u === 'DIV') t[i] = OP('/');
+    }
+    return t;
+  }
+
+  // MySQL-only DML shapes -> SQLite equivalents
+  //   INSERT INTO t SET a = 1, b = 2          -> INSERT INTO t (a, b) VALUES (1, 2)
+  //   UPDATE t x JOIN u y ON c SET x.a = 1 WHERE w -> UPDATE t AS x SET a = 1 FROM u y WHERE (c) AND (w)
+  //   DELETE x FROM t x JOIN u y ON c WHERE w -> DELETE FROM t WHERE rowid IN (SELECT x.rowid FROM t x JOIN u y ON c WHERE w)
+  function mysqlDml(t) {
+    const nw = t.map((x, i) => [x, i]).filter(([x]) => !isWs(x));
+    const U = k => nw[k] && nw[k][0].t === 'word' ? nw[k][0].u : '';
+    const at = (word, from = 0) => { let depth = 0; for (let k = from; k < nw.length; k++) { const v = nw[k][0].v; if (v === '(') depth++; else if (v === ')') depth--; else if (depth === 0 && U(k) === word) return k; } return -1; };
+    const toks = (a, b) => t.slice(nw[a][1], b < nw.length ? nw[b][1] : t.length);
+    const splitCommas = (a, b) => { const parts = []; let depth = 0, start = a; for (let k = a; k < b; k++) { const v = nw[k][0].v; if (v === '(') depth++; else if (v === ')') depth--; else if (depth === 0 && v === ',') { parts.push([start, k]); start = k + 1; } } parts.push([start, b]); return parts; };
+
+    if (U(0) === 'INSERT') {
+      let k = 1;
+      if (U(k) === 'IGNORE') k++;
+      if (U(k) === 'INTO') k++;
+      if (U(k + 1) === 'SET') {
+        const cols = [], vals = [];
+        for (const [a, b] of splitCommas(k + 2, nw.length)) {
+          const eq = nw.findIndex(([x], j) => j >= a && j < b && x.v === '=');
+          if (eq < 0) return t;
+          cols.push(toks(a, eq)); vals.push(toks(eq + 1, b));
+        }
+        const join = list => list.flatMap((x, j) => (j ? [OP(','), SP, ...x] : x));
+        return [W('INSERT'), SP, W('INTO'), SP, nw[k][0], SP, OP('('), ...join(cols), OP(')'), SP, W('VALUES'), SP, OP('('), ...join(vals), OP(')')];
+      }
+      return t;
+    }
+    if (U(0) === 'UPDATE') {
+      const set = at('SET');
+      const joinAt = nw.findIndex(([x], j) => j > 0 && j < set && x.t === 'word' && /^(JOIN|INNER|LEFT|CROSS|STRAIGHT_JOIN)$/.test(x.u));
+      if (set < 0 || joinAt < 0) return t;
+      let a = 1;
+      const table = nw[a][0];
+      let alias = null;
+      if (U(a + 1) === 'AS') alias = nw[a + 2][0]; else if (a + 1 < joinAt) alias = nw[a + 1][0];
+      // joined tables -> FROM list, their ON conditions -> WHERE
+      const froms = [], conds = [];
+      let k = joinAt;
+      while (k < set) {
+        while (k < set && /^(JOIN|INNER|LEFT|OUTER|CROSS|STRAIGHT_JOIN)$/.test(U(k))) k++;
+        const on = (() => { for (let j = k; j < set; j++) if (U(j) === 'ON') return j; return -1; })();
+        const nextJoin = (() => { for (let j = k; j < set; j++) if (/^(JOIN|INNER|LEFT|CROSS|STRAIGHT_JOIN)$/.test(U(j)) && j > k) return j; return set; })();
+        froms.push(toks(k, on >= 0 && on < nextJoin ? on : nextJoin));
+        if (on >= 0 && on < nextJoin) conds.push(toks(on + 1, nextJoin));
+        k = nextJoin;
+      }
+      const where = at('WHERE', set);
+      const setEnd = where >= 0 ? where : nw.length;
+      const assigns = splitCommas(set + 1, setEnd).map(([p, q]) => {
+        // SET x.col = ... -> SET col = ...
+        if (q - p > 2 && nw[p + 1][0].v === '.') return toks(p + 2, q);
+        return toks(p, q);
+      });
+      if (where >= 0) conds.push(toks(where + 1, nw.length));
+      const join = (list, sep) => list.flatMap((x, j) => (j ? [SP, ...sep, SP, OP('('), ...x, OP(')')] : [OP('('), ...x, OP(')')]));
+      return [W('UPDATE'), SP, table, ...(alias ? [SP, W('AS'), SP, alias] : []), SP, W('SET'), SP,
+        ...assigns.flatMap((x, j) => (j ? [OP(','), SP, ...x] : x)), SP, W('FROM'), SP,
+        ...froms.flatMap((x, j) => (j ? [OP(','), SP, ...x] : x)),
+        ...(conds.length ? [SP, W('WHERE'), SP, ...join(conds, [W('AND')])] : [])];
+    }
+    if (U(0) === 'DELETE' && U(1) !== 'FROM') {
+      const from = at('FROM');
+      if (from < 2) return t;
+      const target = nw[1][0].v.toLowerCase();
+      // find the real table behind the alias in the FROM clause
+      let table = null;
+      for (let k = from + 1; k < nw.length; k++) {
+        const x = nw[k][0];
+        const nx = U(k + 1) === 'AS' ? nw[k + 2] : nw[k + 1];
+        if ((x.t === 'word' || x.t === 'qident') && (x.v.toLowerCase() === target || (nx && nx[0].v.toLowerCase() === target))) { table = x; break; }
+      }
+      if (!table) return t;
+      return [W('DELETE'), SP, W('FROM'), SP, table, SP, W('WHERE'), SP, W('rowid'), SP, W('IN'), SP, OP('('),
+        W('SELECT'), SP, nw[1][0], OP('.'), W('rowid'), SP, ...toks(from, nw.length), OP(')')];
     }
     return t;
   }
@@ -381,6 +601,9 @@
         case 'w': return String(dow(p));
         case 'j': return pad(doy(p), 3);
         case 'T': return `${pad(p.h)}:${pad(p.mi)}:${pad(p.s)}`;
+        case 'r': return `${pad(((p.h + 11) % 12) + 1)}:${pad(p.mi)}:${pad(p.s)} ${p.h < 12 ? 'AM' : 'PM'}`;
+        case 'f': return '000000';
+        case 'D': return p.d + (p.d % 10 === 1 && p.d !== 11 ? 'st' : p.d % 10 === 2 && p.d !== 12 ? 'nd' : p.d % 10 === 3 && p.d !== 13 ? 'rd' : 'th');
         case '%': return '%';
         default: return c;
       }
@@ -400,6 +623,19 @@
     }
     const ms = { WEEK: 6048e5, DAY: 864e5, HOUR: 36e5, MINUTE: 6e4, SECOND: 1e3 }[unit];
     return ms ? Math.trunc((toUTC(q) - toUTC(p)) / ms) : null;
+  }
+
+  // MySQL ROUND on exact values: halves go away from zero (2.5 -> 3, -2.5 -> -3, 1.005 -> 1.01)
+  function mysqlRound(x, d) {
+    if (x == null) return null;
+    const n = num(x);
+    d = d == null ? 0 : Math.trunc(num(d));
+    const a = Math.abs(n);
+    let r;
+    if (/e/i.test(String(a))) { const f = 10 ** d; r = Math.round(a * f) / f; }
+    else r = Number(Math.round(Number(a + 'e' + d)) + 'e' + -d);
+    r = n < 0 ? -r : r;
+    return d <= 0 ? Math.round(r) : r;
   }
 
   // MySQL SUBSTRING: 1-based, negative counts from the end, position 0 gives ''
@@ -477,6 +713,13 @@
     substring_index: [3, (s, d, c) => { if (s == null || d == null || c == null) return null; s = toText(s); d = toText(d); c = Math.trunc(num(c)); if (!d || !c) return ''; const parts = s.split(d); return c > 0 ? parts.slice(0, c).join(d) : parts.slice(c).join(d); }],
     format: [2, (x, d) => (x == null ? null : Number(num(x)).toLocaleString('en-US', { minimumFractionDigits: Math.max(0, num(d)), maximumFractionDigits: Math.max(0, num(d)) }))],
     // numbers
+    round: [-1, (x, d) => mysqlRound(x, d)],
+    mysql_int: [1, x => {
+      if (x == null) return null;
+      if (typeof x === 'number') return Math.sign(x) * Math.round(Math.abs(x));
+      const m = String(x).trim().match(/^[+-]?\d+/);
+      return m ? parseInt(m[0], 10) : 0;
+    }],
     truncate: [2, (x, d) => { if (x == null || d == null) return null; const f = 10 ** num(d); return Math.trunc(num(x) * f) / f; }],
     mod: [2, (a, b) => (a == null || b == null || num(b) === 0 ? null : num(a) % num(b))],
     pow: [2, (a, b) => (a == null || b == null ? null : num(a) ** num(b))],
@@ -693,11 +936,45 @@
   }
   const pkOf = table => { const pks = table ? table.columns.filter(c => c.pk) : []; return pks.length === 1 ? pks[0].name.toLowerCase() : null; };
 
+  // simple "ref = ref" pairs joined by AND (ON conditions, WHERE)
+  function equalities(toks) {
+    const out = [];
+    const ref = i => {
+      const x = toks[i];
+      if (!x || (x.t !== 'word' && x.t !== 'qident') || (x.t === 'word' && KEYWORDS.has(x.u))) return null;
+      if (toks[i + 1]?.v === '.' && toks[i + 2] && (toks[i + 2].t === 'word' || toks[i + 2].t === 'qident')) return { r: { qual: x.v.toLowerCase(), col: toks[i + 2].v }, next: i + 3 };
+      return { r: { qual: null, col: x.v }, next: i + 1 };
+    };
+    for (let i = 0; i < toks.length; i++) {
+      const before = toks[i - 1];
+      if (i > 0 && !(before.t === 'word' && /^(ON|AND|WHERE)$/.test(before.u)) && before.v !== '(') continue;
+      const a = ref(i);
+      if (!a || toks[a.next]?.v !== '=') continue;
+      const b = ref(a.next + 1);
+      if (!b) continue;
+      const end = toks[b.next];
+      if (end && !(end.t === 'word' && /^(AND|JOIN|INNER|LEFT|RIGHT|CROSS|NATURAL|WHERE)$/.test(end.u)) && end.v !== ',' && end.v !== ')') continue;
+      out.push([a.r, b.r]);
+    }
+    return out;
+  }
+
   function checkBlocks(tokens, schema, add) {
     for (const b of queryBlocks(tokens)) {
       const from = fromTables(b.from, schema);
       if (from.derivedNoAlias) add('derived', 'MySQL needs a name for every subquery in FROM (error 1248). Add an alias after the closing parenthesis: `FROM (SELECT ...) AS t`.', true);
       const items = splitTop(b.select).map(selectItem);
+      if (b.select[0]?.u === 'DISTINCT' && b.order.length) {
+        const names = new Set(items.flatMap(it => [it.alias, ...it.refs.map(r => r.col)]).filter(Boolean).map(x => x.toLowerCase()));
+        const sigs = new Set(items.map(it => it.sig.replace(/^DISTINCT/, '')));
+        for (const o of splitTop(b.order)) {
+          const tk = o.filter(x => !isWs(x) && !(x.t === 'word' && (x.u === 'ASC' || x.u === 'DESC')));
+          if (tk.length === 1 && tk[0].t === 'num') continue;
+          if (sigs.has(sig(tk))) continue;
+          const miss = analyzeExpr(tk).refs.find(r => !names.has(r.col.toLowerCase()));
+          if (miss) { add('distinct-order', `MySQL would refuse this (error 3065): with SELECT DISTINCT you can only ORDER BY columns that are in the SELECT, and **${miss.text}** isn't. Add it to the SELECT or sort by a selected column.`, true); break; }
+        }
+      }
       const aliases = new Set(items.map(it => it.alias && it.alias.toLowerCase()).filter(Boolean));
       const realCols = new Set([...from.map.values()].filter(Boolean).flatMap(t => t.columns.map(c => c.name.toLowerCase())));
 
@@ -716,6 +993,9 @@
       }
 
       const groupItems = splitTop(b.group).map(g => g.filter(x => !isWs(x)));
+      if (b.having.length && !groupItems.length && !items.some(it => it.agg) && !analyzeExpr(b.having).agg) {
+        add('having-rows', 'MySQL runs this, but HAVING without GROUP BY is an unusual way to filter rows. WHERE is the normal tool for rows; HAVING is for groups.');
+      }
       if (!groupItems.length) {
         // no GROUP BY: an aggregate next to a plain column is error 1140
         if (items.some(it => it.agg && !it.window) && items.some(it => !it.agg && !it.window && (it.refs.length || it.star))) {
@@ -725,12 +1005,46 @@
       }
       // ONLY_FULL_GROUP_BY: every plain column must be grouped, or depend on a grouped primary key
       const gSigs = new Set(groupItems.map(sig));
-      const gRefs = groupItems.flatMap(g => analyzeExpr(g).refs).map(r => ({ ...r, res: resolve(r, from) }));
-      const covered = (r, res) => gRefs.some(g => {
-        const sameTable = g.res && g.res.table && g.res.table === res.table;
-        if (g.col.toLowerCase() === r.col.toLowerCase()) return !r.qual || !g.qual || r.qual === g.qual || sameTable;
-        return sameTable && pkOf(res.table) === g.col.toLowerCase();
-      });
+      const aliasOf = r => {
+        if (r.qual) return from.map.has(r.qual) ? r.qual : null;
+        const hits = [...from.map.entries()].filter(([, tb]) => tb && tb.columns.some(c => c.name.toLowerCase() === r.col.toLowerCase()));
+        return hits.length === 1 ? hits[0][0] : null;
+      };
+      const keyOf = r => { const a = aliasOf(r); return a ? a + '.' + r.col.toLowerCase() : null; };
+      const gKeys = new Set(), gLoose = new Set();
+      for (const g of groupItems.flatMap(x => analyzeExpr(x).refs)) { const k = keyOf(g); if (k) gKeys.add(k); else gLoose.add(g.col.toLowerCase()); }
+      // GROUP BY 2 means "the second column of the SELECT"
+      for (const g of groupItems) {
+        if (g.length !== 1 || g[0].t !== 'num') continue;
+        const it = items[parseInt(g[0].v, 10) - 1];
+        if (!it) continue;
+        gSigs.add(it.sig);
+        for (const r of it.refs) { const k = keyOf(r); if (k) gKeys.add(k); else gLoose.add(r.col.toLowerCase()); }
+      }
+      // a = b in ON / WHERE makes b as good as grouped once a is (MySQL infers this too)
+      const eqs = equalities(b.from).concat(equalities(b.where)).map(([x, y]) => [keyOf(x), keyOf(y)]).filter(([x, y]) => x && y);
+      const whole = new Set(); // aliases whose primary key is grouped: every column of that row is fixed
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const [a, tb] of from.map.entries()) {
+          const pk = pkOf(tb);
+          if (tb && pk && !whole.has(a) && gKeys.has(a + '.' + pk)) {
+            whole.add(a);
+            tb.columns.forEach(c => gKeys.add(a + '.' + c.name.toLowerCase()));
+            changed = true;
+          }
+        }
+        for (const [x, y] of eqs) {
+          if (gKeys.has(x) && !gKeys.has(y)) { gKeys.add(y); changed = true; }
+          if (gKeys.has(y) && !gKeys.has(x)) { gKeys.add(x); changed = true; }
+        }
+      }
+      const covered = r => {
+        const a = aliasOf(r);
+        if (!a) return true;
+        const col = r.col.toLowerCase(), pk = pkOf(from.map.get(a));
+        return gKeys.has(a + '.' + col) || (pk && gKeys.has(a + '.' + pk)) || gLoose.has(col);
+      };
       for (const it of items) {
         if (it.window || it.star) continue;
         if (gSigs.has(it.sig) || (it.alias && gSigs.has(it.alias.toUpperCase()))) continue;
@@ -738,8 +1052,8 @@
         for (const r of it.refs) {
           const res = resolve(r, from);
           if (!res || !res.table) continue; // outer, derived or unknown: don't guess
-          if (!covered(r, res)) {
-            add('groupby-full', `MySQL would reject this (error 1055): **${r.text}** is in the SELECT but not in the GROUP BY, and it isn't inside an aggregate. Add it to the GROUP BY (or group by its table's id).`, true);
+          if (!covered(r)) {
+            add('groupby-full', `MySQL would reject this (error 1055): **${r.text}** is in the SELECT but not in the GROUP BY, and it isn't inside an aggregate, so MySQL can't tell which value to show for each group. Decide what you mean: drop it, wrap it in an aggregate (MAX, GROUP_CONCAT...), or add it to the GROUP BY if you really want one row per value (that changes the groups).`, true);
             flagged = true;
             break;
           }
@@ -773,7 +1087,7 @@
     const add = (code, msg, blocking) => { if (!notes.some(n => n.code === code)) notes.push({ code, msg, blocking: !!blocking }); };
     for (let i = 0; i < tokens.length; i++) {
       const x = tokens[i];
-      if (x.t === 'op' && x.v === '||') add('pipes', 'In MySQL, `||` means OR, not "glue these strings". Use `CONCAT(a, b)` instead.', true);
+      if (x.t === 'op' && x.v === '||') add('pipes', 'In MySQL, `||` means OR, not "glue these strings" (so `FirstName || LastName` gives 0). To join text use `CONCAT(a, b)`.');
       if (x.t === 'op' && x.v === '::') add('pgcast', '`::` casts are PostgreSQL. In MySQL use `CAST(x AS ...)`.', true);
       if (x.t === 'str' && x.q === '"' && schema && schema.columnSet.has(x.v.toLowerCase())) {
         add('dq', `"${x.v}" in double quotes is a text value in MySQL, not a column. Write ${x.v} or \`${x.v}\` instead.`);
@@ -785,13 +1099,52 @@
       if (x.t !== 'word') continue;
       const call = nextWord(i)?.v === '(';
       if (call && ['STRFTIME', 'JULIANDAY', 'PRINTF', 'IIF', 'TYPEOF', 'UNIXEPOCH'].includes(x.u)) add('sqlite-' + x.u, `\`${x.u.toLowerCase()}()\` is SQLite-only. MySQL won't know it.${x.u === 'STRFTIME' ? ' Use `YEAR(d)`, `MONTH(d)` or `DATE_FORMAT(d, \'%Y-%m\')`.' : x.u === 'IIF' ? ' Use `IF(cond, a, b)` or `CASE`.' : ''}`, true);
+      if ((x.u === 'IN' || x.u === 'ALL' || x.u === 'ANY' || x.u === 'SOME') && nextWord(i)?.v === '(' && !/^(UNION|INTERSECT|EXCEPT)$/.test(tokens[prevIdx(tokens, i)]?.u || '')) {
+        const o = nextIdx(tokens, i);
+        if (/^(SELECT|WITH)$/.test(tokens[nextIdx(tokens, o)]?.u || '')) {
+          const c = matchParen(tokens, o);
+          let depth = 0;
+          for (let k = o; k < c; k++) {
+            if (tokens[k].v === '(') depth++; else if (tokens[k].v === ')') depth--;
+            else if (depth === 1 && tokens[k].t === 'word' && tokens[k].u === 'LIMIT') { add('in-limit', 'MySQL refuses LIMIT inside an `IN (...)`, `ALL (...)` or `ANY (...)` subquery (error 1235). Wrap it once more: `IN (SELECT x FROM (SELECT ... LIMIT 5) AS t)`, or use a JOIN.', true); break; }
+          }
+        }
+      }
       if (call && x.u === 'DATETIME') add('sqlite-datetime', '`datetime()` is SQLite-only. In MySQL use `NOW()` or just compare to a string like \'2023-01-01\'.', true);
       if (call && ['GETDATE', 'LEN', 'NVL', 'DATEPART', 'CHARINDEX'].includes(x.u)) add('other-' + x.u, `\`${x.u}()\` is from another database. MySQL equivalents: GETDATE→NOW, LEN→CHAR_LENGTH, NVL→IFNULL, DATEPART→YEAR/MONTH, CHARINDEX→LOCATE.`, true);
       if (x.u === 'TOP' && tokens[prevIdx(tokens, i)]?.u === 'SELECT') add('top', '`SELECT TOP n` is SQL Server. MySQL uses `... ORDER BY ... LIMIT n` at the end.', true);
       if (x.u === 'ILIKE') add('ilike', '`ILIKE` is PostgreSQL. In MySQL plain `LIKE` already ignores case.', true);
       if (x.u === 'FULL' && /^(OUTER|JOIN)$/.test(nextWord(i)?.u || '')) add('full', 'MySQL has no FULL OUTER JOIN. Write a LEFT JOIN, then `UNION` the matching RIGHT JOIN.', true);
     }
+    if (schema) {
+      const names = new Map(schema.tables.map(t => [t.name.toLowerCase(), t.name]));
+      for (let i = 0; i < tokens.length; i++) {
+        const x = tokens[i];
+        if (x.t !== 'word' && x.t !== 'qident') continue;
+        const prev = tokens[prevIdx(tokens, i)];
+        if (!prev || prev.t !== 'word' || !/^(FROM|JOIN|INTO|UPDATE|TABLE|DESCRIBE|DESC)$/.test(prev.u)) continue;
+        const real = names.get(x.v.toLowerCase());
+        if (real && real !== x.v) { add('table-case', `Write **${real}**, not ${x.v}. Windows MySQL doesn't mind, but on a Linux server table names are case-sensitive and \`${x.v}\` would not be found.`); break; }
+      }
+    }
     if (tokens.some(x => x.t === 'word' && x.u === 'SELECT')) checkBlocks(tokens, schema, add);
+    {
+      const nw = tokens.filter(x => !isWs(x));
+      let k = 0;
+      if (nw[k]?.u === 'CREATE') k++;
+      if (nw[k]?.u === 'OR' && nw[k + 1]?.u === 'REPLACE') k += 2;
+      if (k > 0 && nw[k]?.u === 'VIEW' && nw[k + 2]?.u === 'AS') {
+        const block = queryBlocks(tokens)[0];
+        if (block) {
+          const seen = new Map();
+          for (const it of splitTop(block.select).map(selectItem)) {
+            const name = (it.alias || (it.expr.length && it.refs.length === 1 && !it.agg && it.expr[it.expr.length - 1].t !== 'op' ? it.refs[0].col : it.sig)).toLowerCase();
+            if (seen.has(name)) { add('view-dup', `MySQL would refuse this view (error 1060, duplicate column name): two columns are both called **${it.alias || it.refs[0]?.col || name}**. Give one of them an alias with AS.`, true); break; }
+            seen.set(name, true);
+          }
+        }
+      }
+    }
     checkInsert(tokens, schema, add);
     return notes;
   }
@@ -889,8 +1242,9 @@
     }
     if (/incomplete input/.test(msg)) return { title: 'Unfinished query', tip: 'The query ends too early. Usually a missing **)** or a quote that never closes.', raw: msg };
     if (/unrecognized token/.test(msg)) return { title: 'Odd character', tip: 'There is a character SQL does not understand. Often an unclosed quote, or a fancy quote (’ “ ”) pasted from somewhere. Use plain \' quotes.', raw: msg };
+    if (/HAVING clause on a non-aggregate query/.test(msg)) return { title: 'Aggregate mixed with plain columns', tip: 'MySQL would refuse this too (error 1140): an aggregate like AVG() in HAVING turns the query into one big group, but the SELECT also lists plain columns. To compare each row with an average, use a subquery: `WHERE Milliseconds > (SELECT AVG(Milliseconds) FROM Track)`.', raw: msg };
     if (/misuse of aggregate/.test(msg)) return { title: 'Aggregate in the wrong place', tip: 'You can\'t use COUNT/SUM/AVG/MAX inside WHERE. WHERE filters rows before grouping. Filter groups with **HAVING** instead, or compare to a subquery.', raw: msg };
-    if (/a GROUP BY clause is required before HAVING/.test(msg)) return { title: 'HAVING without GROUP BY', tip: 'HAVING filters groups, so it needs a GROUP BY before it. If you meant to filter single rows, use WHERE.', raw: msg };
+    if (/a GROUP BY clause is required before HAVING/.test(msg)) return { title: 'HAVING without GROUP BY', tip: 'HAVING is for filtering the groups that GROUP BY makes. To filter single rows, use WHERE.', raw: msg };
     if ((m = msg.match(/no such function: (\w+)/))) {
       const f = m[1];
       const sugg = closest(f, Object.keys(FUNCS).concat(['count', 'sum', 'avg', 'min', 'max', 'round', 'upper', 'lower', 'length', 'substr', 'substring', 'trim', 'replace', 'ifnull', 'coalesce', 'abs', 'group_concat', 'date']).filter(x => !x.startsWith('mysql_')));
@@ -980,6 +1334,7 @@
           db.run('DROP VIEW IF EXISTS ' + (nw[4].t === 'qident' ? nw[4].raw : nw[4].v));
           tokens = tokens.filter(x => x !== nw[1] && x !== nw[2]);
         }
+        schemaCols = schema ? schema.columnSet : null;
         const rtoks = rewrite(tokens);
         const rewritten = untokenize(rtoks).trim();
         if (isQuery(tokens)) {

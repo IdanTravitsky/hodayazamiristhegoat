@@ -2,7 +2,7 @@
 // restarted, so the page never freezes (the playground sandbox resets when that happens).
 
 // Bump when the engine, worker or database changes, so browsers fetch the new ones.
-export const VERSION = '2026-10-21b';
+export const VERSION = '2026-10-21c';
 const TIMEOUT_MS = 12000;
 let worker = null;
 let seq = 0;

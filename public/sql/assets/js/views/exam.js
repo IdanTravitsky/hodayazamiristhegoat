@@ -191,7 +191,7 @@ export function renderExamRun(main) {
         else { o = await sql.run(it.sql); table = lastTable(o); }
         if (o.error) { graded.push({ ...it, ok: false, title: o.error.title, message: o.error.tip }); continue; }
         const exp = lastTable(await sql.expectedFor(e));
-        let v = table ? compare(exp, table, { ordered: e.ordered }) : { ok: false, title: 'No table', message: 'The query returned nothing to grade.' };
+        let v = table ? compare(exp, table, { ordered: e.ordered, sql: it.sql }) : { ok: false, title: 'No table', message: 'The query returned nothing to grade.' };
         if (v.ok && (o.notes || []).some(n => n.blocking)) v = { ok: false, title: 'MySQL would refuse it', message: (o.notes.find(n => n.blocking) || {}).msg };
         graded.push({ ...it, ok: !!v.ok, title: v.ok ? 'Correct' : v.title, message: v.message || '' });
       } catch (err) {

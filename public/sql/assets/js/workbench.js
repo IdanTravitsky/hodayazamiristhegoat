@@ -100,7 +100,7 @@ export function createWorkbench({ mode = 'free', exercise = null, initial = '', 
     let verdict;
     if (!exp) verdict = { ok: false, kind: 'wrong', title: 'Hmm', message: 'Could not compute the expected answer. Try again in a second.' };
     else if (!table) verdict = { ok: false, kind: 'wrong', title: ex.check ? 'Nothing changed yet' : 'No table', message: ex.check ? 'Run your INSERT / UPDATE / DELETE statement.' : 'The answer should be a SELECT that returns a table.' };
-    else verdict = compare(exp, table, { ordered: ex.ordered });
+    else verdict = compare(exp, table, { ordered: ex.ordered, sql: text });
     const blocking = (o.notes || []).filter(n => n.blocking);
     if (verdict.ok && blocking.length) {
       verdict = { ok: false, kind: 'close', title: 'Right answer, but MySQL would refuse it', message: 'The rows match, but this exact query errors in MySQL (see the note below). On the exam it would count as wrong. Small fix, promise.' };

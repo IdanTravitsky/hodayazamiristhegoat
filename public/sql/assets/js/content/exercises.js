@@ -13,24 +13,25 @@ FROM Genre;`,
     explain: 'The simplest shape there is: one column, one table, no filter. If you wrote `SELECT *`, you got the GenreId too, and the checker counts extra columns as a different answer.',
   },
   {
-    id: 'b02', topic: 'basics', level: 1, title: 'Albums, alphabetically',
-    prompt: 'List every album **title**, sorted alphabetically (A to Z).',
+    id: 'b02', topic: 'basics', level: 1, title: 'Led Zeppelin, alphabetically',
+    prompt: 'Led Zeppelin is artist number 22 (`ArtistId = 22`). List the **title** of each of their albums, sorted alphabetically (A to Z).',
     solution: `SELECT Title
 FROM Album
+WHERE ArtistId = 22
 ORDER BY Title;`,
     ordered: true,
-    hints: ['Album titles are in `Album.Title`.', 'Sorting is `ORDER BY column` (ASC is the default).'],
-    explain: '`ORDER BY Title` sorts ascending by default, so `ASC` is optional. Without ORDER BY, SQL gives no guarantee about row order at all.',
+    hints: ['Album titles are in `Album.Title`, and every album has an `ArtistId`.', 'Keep their albums with `WHERE ArtistId = 22`, then sort with `ORDER BY column` (ASC is the default).'],
+    explain: '`ORDER BY Title` sorts ascending by default, so `ASC` is optional. ORDER BY always comes after WHERE. Without ORDER BY, SQL gives no guarantee about row order at all.',
   },
   {
-    id: 'b03', topic: 'basics', level: 1, title: 'The customer address book',
-    prompt: 'Show each customer\'s **first name**, **last name** and **email**, sorted by last name and then by first name.',
-    solution: `SELECT FirstName, LastName, Email
+    id: 'b03', topic: 'basics', level: 1, title: 'Customers by country',
+    prompt: 'Show each customer\'s **country**, **last name** and **first name**, sorted by country (A to Z) and, within the same country, by last name (A to Z).',
+    solution: `SELECT Country, LastName, FirstName
 FROM Customer
-ORDER BY LastName, FirstName;`,
+ORDER BY Country, LastName;`,
     ordered: true,
     hints: ['Three columns from `Customer`.', 'ORDER BY can take several columns, separated by commas. The second one only breaks ties in the first.'],
-    explain: '`ORDER BY LastName, FirstName` sorts by last name, and only customers with the same last name get sorted by first name.',
+    explain: '`ORDER BY Country, LastName` sorts by country first, and only customers from the same country get sorted by last name. With 13 customers in the USA and 8 in Canada, the second key has plenty of work to do.',
   },
   {
     id: 'b04', topic: 'basics', level: 1, title: 'Where our customers live',
@@ -51,18 +52,18 @@ ORDER BY Milliseconds DESC
 LIMIT 10;`,
     ordered: true,
     hints: ['Length is `Track.Milliseconds`.', 'Sort descending with `DESC`, then keep the first rows with `LIMIT`.'],
-    explain: '`ORDER BY ... DESC LIMIT 10` is the classic top-N pattern. The longest "tracks" are actually Battlestar Galactica episodes, almost an hour and a half each.',
+    explain: '`ORDER BY ... DESC LIMIT 10` is the classic top-N pattern. The longest "tracks" are actually TV episodes, mostly Battlestar Galactica: the top two run almost an hour and a half, the rest about 49 minutes each.',
   },
   {
     id: 'b06', topic: 'basics', level: 2, title: 'Minutes, not milliseconds',
-    prompt: 'For the tracks on album number 1 (`AlbumId = 1`), show the track **name** and its length in **minutes**, rounded to 2 decimals. Longest first.',
-    solution: `SELECT Name, ROUND(Milliseconds / 60000, 2) AS Minutes
+    prompt: 'For the tracks on album number 1 (`AlbumId = 1`), show the track **name** and its length in **minutes**, rounded to **1 decimal**. Longest first, sorted by the exact length (`Milliseconds`).',
+    solution: `SELECT Name, ROUND(Milliseconds / 60000, 1) AS Minutes
 FROM Track
 WHERE AlbumId = 1
 ORDER BY Milliseconds DESC;`,
     ordered: true,
-    hints: ['One minute is 60,000 milliseconds.', '`ROUND(x, 2)` keeps two decimals. You can give the column a name with `AS Minutes`.'],
-    explain: 'You can compute in the SELECT list: `Milliseconds / 60000`. In MySQL that division gives a decimal (not a whole number), and `ROUND(..., 2)` tidies it. Ordering by `Milliseconds` or by the `Minutes` alias gives the same order.',
+    hints: ['One minute is 60,000 milliseconds.', '`ROUND(x, 1)` keeps one decimal. You can give the column a name with `AS Minutes`.', 'Sort by `Milliseconds`, not by the rounded minutes: two tracks can round to the same number.'],
+    explain: 'You can compute in the SELECT list: `Milliseconds / 60000`. In MySQL that division gives a decimal (not a whole number), and `ROUND(..., 1)` tidies it. Sort by the exact `Milliseconds`: *Evil Walks* (263,497 ms) and *Breaking The Rules* (263,288 ms) both round to 4.4 minutes, so `ORDER BY Minutes` can\'t tell them apart and puts them in either order.',
   },
   {
     id: 'b07', topic: 'basics', level: 1, title: 'Who works here',
@@ -116,7 +117,7 @@ WHERE Country = 'Brazil';`,
 FROM Track
 WHERE UnitPrice > 0.99;`,
     hints: ['The price is `Track.UnitPrice`.', 'Use `>` in the WHERE clause.'],
-    explain: 'Only two prices exist: 0.99 and 1.99 (videos). So this returns the 213 tracks priced at 1.99, the TV episodes and music videos.',
+    explain: 'Only two prices exist: 0.99 and 1.99 (videos). So this returns the 213 tracks priced at 1.99, which are all TV episodes (*Lost*, *The Office*, *Battlestar Galactica* and friends).',
   },
   {
     id: 'f03', topic: 'filter', level: 1, title: 'The "The" bands',
@@ -125,7 +126,7 @@ WHERE UnitPrice > 0.99;`,
 FROM Artist
 WHERE Name LIKE 'The %';`,
     hints: ['Pattern matching uses `LIKE`.', "`%` matches any text. Put the space before it: `'The %'`."],
-    explain: "`LIKE 'The %'` means: starts with \"The \" and then anything. Without the space, `'The%'` would also match a band called *Theory*.",
+    explain: "`LIKE 'The %'` means: starts with \"The \" and then anything. Without the space, `'The%'` would also match a band called *Theory*. Chinook happens to have no such band, so both give the same 14 artists here, but only the version with the space says what the question asks.",
   },
   {
     id: 'f04', topic: 'filter', level: 2, title: 'Long and anonymous',
@@ -312,7 +313,7 @@ GROUP BY YEAR(InvoiceDate)
 ORDER BY Year;`,
     ordered: true,
     hints: ['Group by `YEAR(InvoiceDate)`. You can group by an expression.', 'Sum the Total of each group.'],
-    explain: 'GROUP BY can take an expression like `YEAR(InvoiceDate)`. In MySQL you may also write `GROUP BY Year` (the alias). 2022 was the best year.',
+    explain: 'GROUP BY can take an expression like `YEAR(InvoiceDate)`. In MySQL you may also write `GROUP BY Year` (the alias). 2022 was the best year. Keep the ORDER BY even when the rows already come out sorted: GROUP BY does not promise any order in MySQL 8, so without ORDER BY the order is luck.',
   },
   {
     id: 'g04', topic: 'group', level: 2, title: 'Big spenders',
@@ -348,19 +349,19 @@ ORDER BY Month;`,
   },
   {
     id: 'g07', topic: 'group', level: 3, title: 'Countries that order a lot',
-    prompt: 'For billing countries with **more than 20 invoices**, show the **country**, the **number of invoices** and the **average invoice total** (2 decimals). Most invoices first.',
+    prompt: 'For billing countries with **more than 20 invoices**, show the **country**, the **number of invoices** and the **average invoice total** (2 decimals). Most invoices first; countries with the same number in A to Z order.',
     solution: `SELECT BillingCountry, COUNT(*) AS Invoices, ROUND(AVG(Total), 2) AS AvgTotal
 FROM Invoice
 GROUP BY BillingCountry
 HAVING COUNT(*) > 20
-ORDER BY Invoices DESC;`,
+ORDER BY Invoices DESC, BillingCountry;`,
     ordered: true,
-    hints: ['Group invoices by `BillingCountry`.', 'HAVING on the count, ORDER BY the count descending.'],
-    explain: 'Every clause in its place: GROUP BY builds the groups, HAVING filters them, SELECT computes per group, ORDER BY sorts the result.',
+    hints: ['Group invoices by `BillingCountry`.', 'HAVING on the count, ORDER BY the count descending, then the country.'],
+    explain: 'Every clause in its place: GROUP BY builds the groups, HAVING filters them, SELECT computes per group, ORDER BY sorts the result. The second sort key matters here: Brazil and France both have 35 invoices, and without it their order would be up to the database.',
   },
   {
     id: 'g08', topic: 'group', level: 2, title: 'Busy composers',
-    prompt: 'Show each **composer** credited on at least **20 tracks**, with their **number of tracks**. Most tracks first, ties in A to Z order of composer.',
+    prompt: 'Show each **composer** (exactly as written in `Track.Composer`) that appears on at least **20 tracks**, with their **number of tracks**. Most tracks first, ties in A to Z order of composer.',
     solution: `SELECT Composer, COUNT(*) AS Tracks
 FROM Track
 WHERE Composer IS NOT NULL
@@ -389,19 +390,19 @@ GROUP BY YEAR(InvoiceDate)
 ORDER BY Year;`,
     ordered: true,
     hints: ['Group by year.', 'A customer with 3 invoices in a year should count once: `COUNT(DISTINCT ...)`.'],
-    explain: '`COUNT(*)` would count invoices (83 a year). `COUNT(DISTINCT CustomerId)` counts people.',
+    explain: '`COUNT(*)` would count invoices (83 in most years). `COUNT(DISTINCT CustomerId)` counts people.',
   },
   {
     id: 'g11', topic: 'group', level: 3, title: 'Albums with an average over 5 minutes',
-    prompt: 'Show the **AlbumId**, **number of tracks** and **average track length in minutes** (2 decimals) for albums whose tracks average **more than 5 minutes** and that have **at least 10 tracks**. Longest average first.',
+    prompt: 'Show the **AlbumId**, **number of tracks** and **average track length in minutes** (2 decimals) for albums whose tracks average **more than 5 minutes** and that have **at least 10 tracks**. Longest average first, sorted by the exact (unrounded) average.',
     solution: `SELECT AlbumId, COUNT(*) AS Tracks, ROUND(AVG(Milliseconds) / 60000, 2) AS AvgMinutes
 FROM Track
 GROUP BY AlbumId
 HAVING AVG(Milliseconds) > 300000 AND COUNT(*) >= 10
 ORDER BY AVG(Milliseconds) DESC;`,
     ordered: true,
-    hints: ['Group by album.', 'HAVING can combine two conditions with AND.', 'Five minutes is 300000 ms.'],
-    explain: 'HAVING can test several aggregates at once. Sorting by the unrounded `AVG(Milliseconds)` avoids ties caused by rounding.',
+    hints: ['Group by album.', 'HAVING can combine two conditions with AND.', 'Five minutes is 300000 ms.', 'Sort by `AVG(Milliseconds)`, not by the rounded alias.'],
+    explain: 'HAVING can test several aggregates at once. Sorting by the unrounded `AVG(Milliseconds)` avoids ties caused by rounding: albums 256 and 153 both show 5.85, for example, and `ORDER BY AvgMinutes` would put them in either order.',
   },
 
   // ---------------- join ----------------
@@ -448,15 +449,15 @@ WHERE c.Country = 'Germany';`,
   },
   {
     id: 'j05', topic: 'join', level: 2, title: 'Tracks per genre, by name',
-    prompt: 'For each genre, show the **genre name** and its **number of tracks**. Most tracks first.',
+    prompt: 'For each genre, show the **genre name** and its **number of tracks**. Most tracks first; genres with the same number in A to Z order.',
     solution: `SELECT g.Name AS Genre, COUNT(*) AS Tracks
 FROM Genre g
 JOIN Track t ON t.GenreId = g.GenreId
 GROUP BY g.GenreId, g.Name
-ORDER BY Tracks DESC;`,
+ORDER BY Tracks DESC, g.Name;`,
     ordered: true,
-    hints: ['Join Genre and Track, then group.', 'Group by the genre (id and name).'],
-    explain: 'Join, then group. Grouping by `g.GenreId, g.Name` is the safe habit: two genres could share a name, ids never do. Rock has 1,297 tracks.',
+    hints: ['Join Genre and Track, then group.', 'Group by the genre (id and name).', 'Two sort keys: the count (descending), then the name.'],
+    explain: 'Join, then group. Grouping by `g.GenreId, g.Name` is the safe habit: two genres could share a name, ids never do. Rock has 1,297 tracks. The name tiebreak matters: Heavy Metal and World both have 28.',
   },
   {
     id: 'j06', topic: 'join', level: 2, title: 'Sales per rep',
@@ -573,30 +574,30 @@ WHERE mt.Name = 'Protected MPEG-4 video file';`,
     explain: 'Joins multiply rows: one row per matching invoice line. `DISTINCT` collapses them back to one per customer. (An `EXISTS` subquery avoids the duplication altogether.)',
   },
   {
-    id: 'j15', topic: 'join', level: 2, title: 'What Luís listened to',
-    prompt: 'Which **genres** did the customer **Luís Gonçalves** buy? Show each genre **name** once.',
+    id: 'j15', topic: 'join', level: 2, title: 'What Heather listened to',
+    prompt: 'Which **genres** did the customer **Heather Leacock** buy? Show each genre **name** once.',
     solution: `SELECT DISTINCT g.Name
 FROM Customer c
 JOIN Invoice i ON i.CustomerId = c.CustomerId
 JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId
 JOIN Track t ON t.TrackId = il.TrackId
 JOIN Genre g ON g.GenreId = t.GenreId
-WHERE c.FirstName = 'Luís' AND c.LastName = 'Gonçalves';`,
-    hints: ['Customer → Invoice → InvoiceLine → Track → Genre.', "Filter on both names. The í and ç matter: copy them exactly."],
-    explain: 'Five joins, one filter, DISTINCT at the end. Long chains are just the same step repeated.',
+WHERE c.FirstName = 'Heather' AND c.LastName = 'Leacock';`,
+    hints: ['Customer → Invoice → InvoiceLine → Track → Genre.', 'Filter on both names: first and last.', 'She bought many tracks of the same genre. Each genre should appear once.'],
+    explain: 'Five tables, four joins, one filter, DISTINCT at the end. Long chains are just the same step repeated. She bought 38 tracks across 8 genres.',
   },
   {
     id: 'j16', topic: 'join', level: 3, title: 'Revenue per genre',
-    prompt: 'For each genre, show the **genre name** and the **revenue** it brought in (sum of `UnitPrice * Quantity` over invoice lines, 2 decimals). Highest revenue first.',
+    prompt: 'For each genre that sold at least one track, show the **genre name** and the **revenue** it brought in (sum of `UnitPrice * Quantity` over invoice lines, 2 decimals). Highest revenue first; genres with the same revenue in A to Z order.',
     solution: `SELECT g.Name AS Genre, ROUND(SUM(il.UnitPrice * il.Quantity), 2) AS Revenue
 FROM InvoiceLine il
 JOIN Track t ON t.TrackId = il.TrackId
 JOIN Genre g ON g.GenreId = t.GenreId
 GROUP BY g.GenreId, g.Name
-ORDER BY Revenue DESC;`,
+ORDER BY Revenue DESC, g.Name;`,
     ordered: true,
-    hints: ['Money per line is on InvoiceLine. The genre is on Track.', 'Use `il.UnitPrice` (what was paid), not `t.UnitPrice` (the list price).'],
-    explain: 'Revenue comes from InvoiceLine. In this data both prices are equal, but on an exam `InvoiceLine.UnitPrice * Quantity` is the correct answer. Opera never sold, so it doesn\'t appear (INNER JOIN).',
+    hints: ['Money per line is on InvoiceLine. The genre is on Track.', 'Use `il.UnitPrice` (what was paid), not `t.UnitPrice` (the list price).', 'Sort by the revenue (descending), then by the genre name.'],
+    explain: 'Revenue comes from InvoiceLine. In this data both prices are equal, but on an exam `InvoiceLine.UnitPrice * Quantity` is the correct answer. Opera never sold, so it doesn\'t appear (INNER JOIN). Ties really happen here: Classical and R&B/Soul both made 40.59.',
   },
   {
     id: 'j17', topic: 'join', level: 3, title: 'Every genre, even the unsold',
@@ -647,7 +648,7 @@ WHERE NOT EXISTS (
   WHERE i.CustomerId = c.CustomerId AND YEAR(i.InvoiceDate) = 2025
 );`,
     hints: ['First think: who **did** buy in 2025? That\'s a subquery on Invoice.', 'Then take everyone **NOT IN** that list (or use NOT EXISTS).'],
-    explain: '`NOT IN (subquery)` keeps customers whose id is not in the 2025 buyer list. A plain `WHERE YEAR(...) <> 2025` on a join would be wrong: it finds customers with *some* non-2025 invoice, which is almost everyone.',
+    explain: '`NOT IN (subquery)` keeps customers whose id is not in the 2025 buyer list. A plain `WHERE YEAR(...) <> 2025` on a join would be wrong: it finds customers with *some* non-2025 invoice, which here is all 59 of them.',
   },
   {
     id: 's04', topic: 'subq', level: 2, title: 'Greatest hits artists',
@@ -689,7 +690,7 @@ FROM (
   },
   {
     id: 's07', topic: 'subq', level: 3, title: 'Top spender in each country',
-    prompt: 'For each country, show the **country**, **first name**, **last name** and **total spent** of the customer who spent the most there. If two customers tie in a country, show both.',
+    prompt: 'For each country, show the **country**, **first name**, **last name** and **total spent** of the customer who spent the most there. If several customers tie for the top in a country, show all of them.',
     solution: `SELECT c.Country, c.FirstName, c.LastName, SUM(i.Total) AS Spent
 FROM Customer c
 JOIN Invoice i ON i.CustomerId = c.CustomerId
@@ -705,7 +706,7 @@ HAVING SUM(i.Total) = (
   WHERE s.Country = c.Country
 );`,
     hints: ['First get each customer\'s total (group by customer).', 'Keep a customer if their total equals the **max total within their country**.', 'That max needs a derived table of per-customer totals, filtered to the outer row\'s country.'],
-    explain: 'The "best per group" pattern without window functions: per-customer totals, then compare to the max per country with a correlated subquery. Countries with a single customer simply return that customer.',
+    explain: 'The "best per group" pattern without window functions: per-customer totals, then compare to the max per country with a correlated subquery. Countries with a single customer simply return that customer, and the United Kingdom returns three (Emma Jones, Phil Hughes and Steve Murray all spent 37.62): 26 rows in all.',
   },
   {
     id: 's08', topic: 'subq', level: 2, title: 'Longer than every jazz track',
@@ -736,10 +737,9 @@ WHERE EmployeeId IN (
 FROM Employee e
 JOIN Customer c ON c.SupportRepId = e.EmployeeId
 GROUP BY e.EmployeeId, e.FirstName, e.LastName
-ORDER BY COUNT(*) DESC
-LIMIT 1;`,
-    hints: ['Count customers per SupportRepId.', 'The quick way: ORDER BY that count DESC LIMIT 1. The tie-proof way: compare to the MAX of the counts.'],
-    explain: 'Jane Peacock has 21 customers. The LIMIT 1 version is fine when there\'s a clear winner; the MAX version also handles ties.',
+HAVING COUNT(*) >= ALL (SELECT COUNT(*) FROM Customer GROUP BY SupportRepId);`,
+    hints: ['Count customers per SupportRepId.', 'The quick way: ORDER BY that count DESC LIMIT 1. The tie-proof way: compare to the MAX of the counts (or use `>= ALL`).'],
+    explain: 'Jane Peacock has 21 customers (Margaret Park 20, Steve Johnson 18). `ORDER BY COUNT(*) DESC LIMIT 1` gives the same answer here because there is a clear winner, but it would silently drop a tie. The MAX and `>= ALL` versions keep every rep that shares the top count.',
   },
   {
     id: 's10', topic: 'subq', level: 2, title: 'Albums nobody bought',
@@ -770,7 +770,7 @@ LIMIT 1, 1;`,
   },
   {
     id: 's12', topic: 'subq', level: 3, title: 'Customers above the average spender',
-    prompt: 'Show the **first name**, **last name** and **total spent** of customers whose total spending is **above the average total spending per customer**. Highest first.',
+    prompt: 'Show the **first name**, **last name** and **total spent** of customers whose total spending is **above the average total spending per customer**. Highest first; customers who spent the same in A to Z order of last name.',
     solution: `SELECT c.FirstName, c.LastName, SUM(i.Total) AS Spent
 FROM Customer c
 JOIN Invoice i ON i.CustomerId = c.CustomerId
@@ -778,10 +778,10 @@ GROUP BY c.CustomerId, c.FirstName, c.LastName
 HAVING SUM(i.Total) > (
   SELECT AVG(t.s) FROM (SELECT SUM(Total) AS s FROM Invoice GROUP BY CustomerId) AS t
 )
-ORDER BY Spent DESC;`,
+ORDER BY Spent DESC, c.LastName;`,
     ordered: true,
-    hints: ['Per-customer totals: group by customer.', 'The average of those totals needs a derived table.', 'Compare in HAVING.'],
-    explain: 'The average per customer is an average of sums, so it needs a derived table. Note that `AVG(Total)` over invoices is a different number (average invoice, not average customer).',
+    hints: ['Per-customer totals: group by customer.', 'The average of those totals needs a derived table.', 'Compare in HAVING.', 'Sort by the total (descending), then by last name: many customers spent exactly the same.'],
+    explain: 'The average per customer is an average of sums (about 39.47), so it needs a derived table. Note that `AVG(Total)` over invoices is a different number (5.65, the average invoice, not the average customer). Ties are everywhere here: eight customers spent exactly 39.62, which is why the last-name tiebreak is part of the question.',
   },
 
   // ---------------- func ----------------
@@ -849,7 +849,7 @@ GROUP BY DATE_FORMAT(InvoiceDate, '%Y-%m')
 ORDER BY Month;`,
     ordered: true,
     hints: ["`DATE_FORMAT(d, '%Y-%m')` gives year-month text.", 'Group by that same expression.'],
-    explain: "`%Y` is the 4-digit year, `%m` the 2-digit month. Because the text starts with the year, sorting it alphabetically is also chronological.",
+    explain: "`%Y` is the 4-digit year, `%m` the 2-digit month. Because the text starts with the year, sorting it alphabetically is also chronological. (`%M` would give the month's name, like *March*, which sorts alphabetically, not by date.)",
   },
   {
     id: 'c07', topic: 'func', level: 3, title: 'Which weekday sells best',
@@ -864,24 +864,29 @@ ORDER BY Revenue DESC;`,
   },
   {
     id: 'c08', topic: 'func', level: 2, title: 'Song or video',
-    prompt: 'For tracks on album **227** (*Battlestar Galactica, Season 3*), show the **name**, **price**, and a column **Kind** that says **video** when the price is above 1 and **song** otherwise.',
+    prompt: 'For the tracks on albums **1** (AC/DC) and **227** (*Battlestar Galactica, Season 3*), show the **name**, **price**, and a column **Kind** that says **video** when the price is above 1 and **song** otherwise.',
     solution: `SELECT Name, UnitPrice, IF(UnitPrice > 1, 'video', 'song') AS Kind
 FROM Track
-WHERE AlbumId = 227;`,
+WHERE AlbumId IN (1, 227);`,
     alt: `SELECT Name, UnitPrice, CASE WHEN UnitPrice > 1 THEN 'video' ELSE 'song' END AS Kind
 FROM Track
-WHERE AlbumId = 227;`,
-    hints: ["MySQL has `IF(condition, value_if_true, value_if_false)`.", 'A CASE expression works too.'],
-    explain: 'IF() is MySQL shorthand for a two-way CASE. All tracks on this album are episodes, so they all say video.',
+WHERE AlbumId IN (1, 227);`,
+    hints: ['Two albums: `WHERE AlbumId IN (1, 227)` (or two conditions with OR).', "MySQL has `IF(condition, value_if_true, value_if_false)`.", 'A CASE expression works too.'],
+    explain: 'IF() is MySQL shorthand for a two-way CASE. The AC/DC songs cost 0.99 and say song; the 19 Battlestar episodes cost 1.99 and say video.',
   },
   {
-    id: 'c09', topic: 'func', level: 2, title: 'Shouting initials',
-    prompt: 'For employees, show the **initials** in capitals followed by dots (Andrew Adams becomes **A.A.**) and their **email in upper case**.',
+    id: 'c09', topic: 'func', level: 2, title: 'Initials and user names',
+    prompt: 'For customers in **Canada**, show their **initials** followed by dots (Mark Philips becomes **M.P.**) and the **user name** of their email, meaning the part before the @ (mphilips12@shaw.ca becomes **mphilips12**).',
     solution: `SELECT CONCAT(LEFT(FirstName, 1), '.', LEFT(LastName, 1), '.') AS Initials,
-       UPPER(Email) AS Email
-FROM Employee;`,
-    hints: ['`LEFT(text, 1)` takes the first character.', 'Glue with CONCAT. `UPPER()` for capitals.'],
-    explain: 'String functions combine freely. `SUBSTRING(FirstName, 1, 1)` is the same as `LEFT(FirstName, 1)`.',
+       SUBSTRING_INDEX(Email, '@', 1) AS UserName
+FROM Customer
+WHERE Country = 'Canada';`,
+    alt: `SELECT CONCAT(LEFT(FirstName, 1), '.', LEFT(LastName, 1), '.') AS Initials,
+       LEFT(Email, LOCATE('@', Email) - 1) AS UserName
+FROM Customer
+WHERE Country = 'Canada';`,
+    hints: ['`LEFT(text, 1)` takes the first character. Glue the pieces with CONCAT.', "`SUBSTRING_INDEX(Email, '@', 1)` returns everything before the first @.", "Or: `LOCATE('@', Email)` finds the position of the @, and `LEFT(Email, position - 1)` takes everything before it."],
+    explain: 'String functions combine freely. `SUBSTRING(FirstName, 1, 1)` is the same as `LEFT(FirstName, 1)`. With SUBSTRING_INDEX, a positive count takes from the left (before the @) and a negative one from the right (the domain, as in the email providers exercise).',
   },
   {
     id: 'c10', topic: 'func', level: 3, title: 'Days between purchases',
@@ -917,7 +922,7 @@ WHERE Country = 'Canada';`,
 UNION
 SELECT City FROM Employee;`,
     hints: ['UNION (without ALL) removes duplicates.'],
-    explain: 'Plain `UNION` removes duplicate rows across both sides, so Calgary or Edmonton appear once even though both customers and employees live there.',
+    explain: 'Plain `UNION` removes every duplicate row, across the two sides and within each side. Edmonton (home to a customer and an employee) appears once, and so does Calgary, where five employees live. 55 cities in all; `UNION ALL` would give 67 rows.',
   },
   {
     id: 'u03', topic: 'set', level: 3, title: 'Extremes',
@@ -930,7 +935,7 @@ SELECT 'longest', Name, Milliseconds
 FROM Track
 WHERE Milliseconds = (SELECT MAX(Milliseconds) FROM Track);`,
     hints: ['Two queries, one for each end, glued with UNION ALL.', 'Each half finds its track with a MIN / MAX subquery.'],
-    explain: 'In MySQL you can\'t put ORDER BY + LIMIT inside each half of a UNION without wrapping them in parentheses. MIN/MAX subqueries avoid the problem.',
+    explain: 'In MySQL you can\'t put ORDER BY + LIMIT inside each half of a UNION unless you wrap each half in parentheses, like `(SELECT ... ORDER BY Milliseconds LIMIT 1) UNION ALL (SELECT ...)`. MIN/MAX subqueries avoid the problem altogether, and unlike `LIMIT 1` they also keep ties.',
   },
 
   // ---------------- dml ----------------
@@ -979,8 +984,8 @@ SELECT c.CustomerId, c.FirstName, c.LastName, SUM(i.Total) AS Spent
 FROM Customer c
 JOIN Invoice i ON i.CustomerId = c.CustomerId
 GROUP BY c.CustomerId, c.FirstName, c.LastName;`,
-    check: 'SELECT * FROM CustomerSpending',
-    hints: ['`CREATE VIEW name AS SELECT ...;`', 'The SELECT is a normal group-by-customer query.'],
+    check: 'SELECT CustomerId, FirstName, LastName, Spent FROM CustomerSpending',
+    hints: ['`CREATE VIEW name AS SELECT ...;`', 'The SELECT is a normal group-by-customer query.', 'The view\'s column names come from the SELECT, so give the sum its name: `AS Spent`.'],
     explain: 'A view is a saved query that behaves like a table: `SELECT * FROM CustomerSpending` reruns it every time. It stores no data of its own.',
   },
   {
@@ -997,7 +1002,7 @@ WHERE Country = 'Canada' AND Company IS NULL;`,
   // ---------------- window (bonus) ----------------
   {
     id: 'w01', topic: 'window', level: 3, title: 'Rank the genres',
-    prompt: '*Bonus, if your course covered window functions.* Show each genre **name**, its **tracks sold**, and its **rank** by tracks sold (1 = best; ties share a rank). Best first, ties A to Z.',
+    prompt: '*Bonus, if your course covered window functions.* Show each genre **name**, its **tracks sold** (invoice lines), and its **rank** by tracks sold: 1 = best, tied genres share a rank, and the rank after a tie skips ahead (1, 2, 2, 4). Only genres that sold something. Best first, ties A to Z.',
     solution: `SELECT g.Name, COUNT(*) AS Sold,
        RANK() OVER (ORDER BY COUNT(*) DESC) AS Rnk
 FROM InvoiceLine il
@@ -1028,15 +1033,15 @@ WHERE t.Milliseconds = (SELECT MAX(t2.Milliseconds) FROM Track t2 WHERE t2.Genre
     explain: 'The top-1-per-group pattern. Both the window version and the correlated subquery are valid; on an exam that didn\'t teach window functions, use the subquery.',
   },
   {
-    id: 'w03', topic: 'window', level: 3, title: 'Running total, 2021',
-    prompt: '*Bonus.* For invoices from **January 2021**, show **InvoiceId**, **InvoiceDate**, **Total** and a **running total** of revenue in InvoiceId order.',
+    id: 'w03', topic: 'window', level: 3, title: 'Running total, March 2021',
+    prompt: '*Bonus.* For invoices from **March 2021**, show **InvoiceId**, **InvoiceDate**, **Total** and a **running total** of their revenue in InvoiceId order (the running total starts at the first March invoice).',
     solution: `SELECT InvoiceId, InvoiceDate, Total,
        SUM(Total) OVER (ORDER BY InvoiceId) AS RunningTotal
 FROM Invoice
-WHERE InvoiceDate >= '2021-01-01' AND InvoiceDate < '2021-02-01'
+WHERE InvoiceDate >= '2021-03-01' AND InvoiceDate < '2021-04-01'
 ORDER BY InvoiceId;`,
     ordered: true,
-    hints: ['`SUM(Total) OVER (ORDER BY InvoiceId)` adds up everything up to the current row.'],
-    explain: 'With ORDER BY inside OVER, SUM becomes cumulative. Without it, every row would show the grand total.',
+    hints: ['`SUM(Total) OVER (ORDER BY InvoiceId)` adds up everything up to the current row.', 'Filter March 2021 in WHERE. The window only sees rows that survive the WHERE.'],
+    explain: 'With ORDER BY inside OVER, SUM becomes cumulative. Without it, every row would show the month\'s grand total (37.62). Window functions run after WHERE, so the running total starts at March\'s first invoice. If you computed it over all invoices in a derived table and filtered March afterwards, it would carry January and February along.',
   },
 ];

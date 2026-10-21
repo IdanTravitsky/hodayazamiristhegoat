@@ -15,7 +15,7 @@ LIMIT    n;`, md: 'Written in this order. **Executed** in a different one: FROM/
   AND Name LIKE 'The %'        -- % = any text, _ = one char
   AND Composer IS NULL         -- never = NULL
   AND (GenreId = 1 OR GenreId = 3)  -- brackets around OR!`, md: '`AND` binds tighter than `OR`. When in doubt, add parentheses.' },
-  { t: 'Aggregates', md: '- `COUNT(*)` counts rows. `COUNT(col)` skips NULLs. `COUNT(DISTINCT col)` counts different values.\n- `SUM`, `AVG`, `MIN`, `MAX` ignore NULLs.\n- `ROUND(AVG(x), 2)` for two decimals.\n- Every plain column in SELECT must be in GROUP BY (MySQL 8 enforces this).' },
+  { t: 'Aggregates', md: '- `COUNT(*)` counts rows. `COUNT(col)` skips NULLs. `COUNT(DISTINCT col)` counts different values.\n- `SUM`, `AVG`, `MIN`, `MAX` ignore NULLs.\n- `ROUND(AVG(x), 2)` for two decimals.\n- Every plain column in SELECT must be in GROUP BY (MySQL 8 enforces this). The one exception: once you group by a table\'s primary key, that table\'s other columns are allowed.' },
   { t: 'Joins', sql: `-- only matches
 FROM Track t JOIN Album al ON al.AlbumId = t.AlbumId
 -- keep every left row, NULLs when no match
@@ -23,7 +23,7 @@ FROM Artist ar LEFT JOIN Album al ON al.ArtistId = ar.ArtistId
 -- "never": left join + IS NULL
 WHERE al.AlbumId IS NULL
 -- self join
-FROM Employee e LEFT JOIN Employee m ON m.EmployeeId = e.ReportsTo`, md: 'A condition on the right-hand table in WHERE turns a LEFT JOIN back into an inner one. Put it in the ON instead if you want to keep the unmatched rows.' },
+FROM Employee e LEFT JOIN Employee m ON m.EmployeeId = e.ReportsTo`, md: 'A WHERE condition on the right-hand table (anything except `IS NULL`) turns a LEFT JOIN back into an inner one, because unmatched rows have NULL there. Put it in the ON instead if you want to keep the unmatched rows.' },
   { t: 'Subqueries', sql: `-- one value
 WHERE Milliseconds > (SELECT AVG(Milliseconds) FROM Track)
 -- a list
@@ -31,7 +31,7 @@ WHERE TrackId IN (SELECT TrackId FROM InvoiceLine)
 -- exists (correlated)
 WHERE NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.CustomerId = c.CustomerId)
 -- derived table
-SELECT AVG(n) FROM (SELECT COUNT(*) AS n FROM Invoice GROUP BY CustomerId) AS x`, md: '`= (subquery)` needs exactly one row; use `IN` for many. `NOT IN` breaks if the list contains a NULL: prefer `NOT EXISTS`. A derived table needs an alias.' },
+SELECT AVG(n) FROM (SELECT COUNT(*) AS n FROM Invoice GROUP BY CustomerId) AS x`, md: '`= (subquery)` needs a subquery that returns one value (one row, one column); use `IN` when it can return many. `NOT IN` breaks if the list contains a NULL: prefer `NOT EXISTS`. A derived table needs an alias.' },
   { t: 'Top-N and "the most"', sql: `-- the single longest track
 SELECT Name FROM Track ORDER BY Milliseconds DESC LIMIT 1;
 -- including ties
