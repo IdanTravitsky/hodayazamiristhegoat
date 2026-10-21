@@ -203,7 +203,7 @@ WHERE Email LIKE '%@gmail.com';`,
     explain: "`'%@gmail.com'` means \"anything, then @gmail.com at the very end\". Eight customers use Gmail.",
   },
   {
-    id: 'f11', topic: 'filter', level: 2, title: 'Long love songs, not rock',
+    id: 'f11', topic: 'filter', level: 2, title: 'Long "Love" tracks, not rock',
     prompt: 'Show the **name**, **GenreId** and **Milliseconds** of tracks that are **not** rock (genre 1), are longer than **5 minutes**, and whose name contains **"Love"**.',
     solution: `SELECT Name, GenreId, Milliseconds
 FROM Track

@@ -159,12 +159,12 @@ function applyTheme(theme, remember) {
 
 // ---------- goat ----------
 function petGoat() {
-  const hearts = document.querySelector('.goat-hearts');
-  hearts.hidden = false;
-  hearts.innerHTML = icon('heart') + icon('heart') + icon('heart');
-  hearts.classList.remove('go'); void hearts.offsetWidth; hearts.classList.add('go');
+  const sparks = document.querySelector('.goat-sparks');
+  sparks.hidden = false;
+  sparks.innerHTML = icon('star') + icon('star') + icon('star');
+  sparks.classList.remove('go'); void sparks.offsetWidth; sparks.classList.add('go');
   clearTimeout(petGoat.t);
-  petGoat.t = setTimeout(() => { hearts.hidden = true; }, 2600);
+  petGoat.t = setTimeout(() => { sparks.hidden = true; }, 2600);
   if (store.profile()) {
     store.quietly(d => { d.goatPets = (d.goatPets || 0) + 1; });
     const n = store.data().goatPets;

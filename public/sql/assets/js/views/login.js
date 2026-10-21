@@ -18,7 +18,7 @@ export function renderLogin(main) {
     sessionStorage.removeItem('hodaya-sql-after-login');
     go(after && after !== 'login' ? after : '');
     if (/hodaya|הודיה/i.test(p.name)) {
-      setTimeout(() => toast({ kicker: isNew ? 'WELCOME' : 'WELCOME BACK', title: isNew ? "Oh, it's you." : 'There she is.', text: isNew ? 'This whole place was built for you. Have a look around.' : 'Everything is where you left it.', iconType: 'heart' }), 500);
+      setTimeout(() => toast({ kicker: isNew ? 'WELCOME' : 'WELCOME BACK', title: isNew ? 'Welcome to the study hall.' : 'Welcome back.', text: isNew ? 'Start with the Chinook tour, or jump straight into practice.' : 'Everything is where you left it.', iconType: 'star' }), 500);
     }
   }
 

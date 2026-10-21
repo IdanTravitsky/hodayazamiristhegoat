@@ -25,7 +25,7 @@ export const FIRST_TRY = [
 
 export const NUDGES = [
   "Not yet. You're circling it.",
-  'Close-ish. Read the message below, it knows things.',
+  'Close-ish. The message above knows things.',
   'Every great query was wrong a few times first.',
   'Deep breath. Check the row count first, then the columns.',
   "This is the part where it clicks. Keep going.",
@@ -41,10 +41,10 @@ export function greeting(name) {
 }
 
 export const GOAT = [
-  'The goat believes in you.',
-  'The goat has reviewed your progress. The goat is proud.',
+  'The goat has no comment. The goat is a goat.',
+  'The goat has reviewed your progress. The goat approves.',
   'Pet count rising. The goat remains supportive.',
-  "The goat doesn't know SQL. The goat knows you do.",
+  "The goat doesn't know SQL. That's why you're the one studying.",
   'Baaa. (translation: GROUP BY before HAVING.)',
   'The goat is staying for the exam. Moral support only.',
 ];
