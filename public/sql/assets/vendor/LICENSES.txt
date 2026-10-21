@@ -1,0 +1,15 @@
+Third-party code and data bundled with hodaya.sql
+
+sql.js 1.15.1 (sql-wasm.js, sql-wasm.wasm)
+  MIT License. https://github.com/sql-js/sql.js
+  Includes SQLite, which is in the public domain. https://sqlite.org/copyright.html
+
+CodeMirror 5.65.21 (codemirror.min.js / .css: lib, sql mode, show-hint, sql-hint,
+matchbrackets, closebrackets, placeholder)
+  MIT License, Copyright (C) 2017 by Marijn Haverbeke and others. https://codemirror.net/5/
+
+Chinook Database v1.4.5 (assets/db/chinook.sqlite, rebuilt from the official SQLite script)
+  MIT License, Copyright (c) 2008-2024 Luis Rocha. https://github.com/lerocha/chinook-database
+
+Fonts (assets/fonts): DM Sans, Fraunces, Caveat
+  SIL Open Font License 1.1, via Google Fonts. Same self-hosted files as hodaya.world.
